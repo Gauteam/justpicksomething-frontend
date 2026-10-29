@@ -26,8 +26,22 @@ export type Item = {
   myVote: number;
 };
 
+export type VoteMode = "thumbs" | "budget";
+
+export type Room = {
+  slug: string;
+  name: string;
+  updatedAt: string;
+  // null = no limit
+  maxItems: number | null;
+  voteMode: VoteMode;
+  votesPerMember: number;
+  allowDuplicateVotes: boolean;
+  lockedAt: string | null;
+};
+
 export type RoomData = {
-  room: { slug: string; name: string; updatedAt: string };
+  room: Room;
   me: Member;
   members: Member[];
   columns: Column[];
@@ -100,36 +114,26 @@ export async function getRoom(slug: string, token: string, since?: string | null
   return "unchanged" in body ? null : body;
 }
 
+export type NewItem = { title: string; fields?: Record<string, string | boolean> };
+
 // Adds items in order. Titles already in the room (ignoring case) are skipped,
-// so the result may be shorter than `titles`.
-export async function addItems(slug: string, token: string, titles: string[]): Promise<Item[]> {
+// so the result may be shorter than `items`.
+export async function addItems(slug: string, token: string, items: NewItem[]): Promise<Item[]> {
   const res = await request(`/rooms/${encodeURIComponent(slug)}/items`, {
     method: "POST",
     token,
-    body: JSON.stringify({ titles }),
+    body: JSON.stringify({ items }),
   });
   return ((await res.json()) as { items: Item[] }).items;
 }
 
-// Splits pasted text into titles: one per line or comma-separated.
-export function splitTitles(text: string): string[] {
-  const seen = new Set<string>();
-  return text
-    .split(/[\n,]/)
-    .map((t) => t.trim())
-    .filter((t) => {
-      const key = t.toLowerCase();
-      if (!t || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-export async function setVote(slug: string, token: string, itemId: string, value: 1 | -1) {
+// Sets the caller's vote: ±1 in thumbs mode, or the number of votes placed
+// on the item (≥ 1) in budget mode.
+export async function setVote(slug: string, token: string, itemId: string, mode: VoteMode, value: number) {
   await request(`/rooms/${encodeURIComponent(slug)}/items/${itemId}/vote`, {
     method: "PUT",
     token,
-    body: JSON.stringify({ value }),
+    body: JSON.stringify(mode === "budget" ? { count: value } : { value }),
   });
 }
 
@@ -202,3 +206,12 @@ export async function deleteComment(slug: string, token: string, commentId: stri
 }
 
 export const errorMessage = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
+
+export type SettingsPatch = Partial<
+  Pick<Room, "name" | "maxItems" | "voteMode" | "votesPerMember" | "allowDuplicateVotes">
+> & { locked?: boolean };
+
+// Admin only. While locked, only { locked: false } is accepted.
+export async function updateSettings(slug: string, token: string, patch: SettingsPatch) {
+  await request(roomPath(slug), { method: "PATCH", token, body: JSON.stringify(patch) });
+}

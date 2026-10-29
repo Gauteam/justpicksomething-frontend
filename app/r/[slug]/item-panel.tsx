@@ -16,7 +16,7 @@ import {
 import { Linkify } from "@/components/linkify";
 import { Panel } from "@/components/panel";
 import { errorClass, inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
-import { Votes } from "./item-list";
+import { FieldValue, Votes, type Voting } from "./item-list";
 
 type Props = {
   slug: string;
@@ -27,7 +27,9 @@ type Props = {
   me: Member;
   // Changes whenever anything in the room changes; the thread refetches then.
   roomUpdatedAt: string;
-  onVote: (item: Item, value: 1 | -1) => void;
+  voting: Voting;
+  // The room is locked in: show everything, change nothing.
+  readOnly: boolean;
   onChanged: () => Promise<void>;
   onClose: () => void;
 };
@@ -38,12 +40,29 @@ export function ItemPanel(props: Props) {
     <Panel title={item.title} onClose={onClose}>
       <div className="space-y-6">
         <div className="flex items-center gap-2">
-          <Votes item={item} onVote={props.onVote} />
+          <Votes item={item} voting={props.voting} />
         </div>
-        <ItemEditor {...props} />
+        {props.readOnly ? <ItemDetails {...props} /> : <ItemEditor {...props} />}
         <Comments {...props} />
       </div>
     </Panel>
+  );
+}
+
+// Locked rooms: the item's values, not editable.
+function ItemDetails({ item, columns }: Props) {
+  if (columns.length === 0) return null;
+  return (
+    <dl className="space-y-2 text-sm">
+      {columns.map((c) => (
+        <div key={c.id}>
+          <dt className="text-zinc-500">{c.name}</dt>
+          <dd>
+            <FieldValue column={c} value={item.fields[c.id]} />
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -168,7 +187,7 @@ function ItemEditor({ slug, token, item, columns, onChanged }: Props) {
   );
 }
 
-function Comments({ slug, token, item, members, me, roomUpdatedAt, onChanged }: Props) {
+function Comments({ slug, token, item, members, me, roomUpdatedAt, readOnly, onChanged }: Props) {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [body, setBody] = useState("");
@@ -237,8 +256,8 @@ function Comments({ slug, token, item, members, me, roomUpdatedAt, onChanged }: 
               key={c.id}
               comment={c}
               author={names.get(c.authorId) ?? "Someone"}
-              canEdit={c.authorId === me.id}
-              canDelete={c.authorId === me.id || me.isAdmin}
+              canEdit={!readOnly && c.authorId === me.id}
+              canDelete={!readOnly && (c.authorId === me.id || me.isAdmin)}
               onEdit={(next) => onEdit(c, next)}
               onDelete={() => onDelete(c)}
             />
@@ -246,22 +265,24 @@ function Comments({ slug, token, item, members, me, roomUpdatedAt, onChanged }: 
         </ul>
       )}
       {error && <p className={errorClass}>{error}</p>}
-      <form onSubmit={onSubmit} className="space-y-2">
-        <label htmlFor="new-comment" className="sr-only">
-          Add a comment
-        </label>
-        <textarea
-          id="new-comment"
-          className={`${inputClass} min-h-20`}
-          placeholder="Add a comment…"
-          value={body}
-          maxLength={1000}
-          onChange={(e) => setBody(e.target.value)}
-        />
-        <button type="submit" className={primaryButtonClass} disabled={busy || !body.trim()}>
-          {busy ? "Posting…" : "Comment"}
-        </button>
-      </form>
+      {!readOnly && (
+        <form onSubmit={onSubmit} className="space-y-2">
+          <label htmlFor="new-comment" className="sr-only">
+            Add a comment
+          </label>
+          <textarea
+            id="new-comment"
+            className={`${inputClass} min-h-20`}
+            placeholder="Add a comment…"
+            value={body}
+            maxLength={1000}
+            onChange={(e) => setBody(e.target.value)}
+          />
+          <button type="submit" className={primaryButtonClass} disabled={busy || !body.trim()}>
+            {busy ? "Posting…" : "Comment"}
+          </button>
+        </form>
+      )}
     </section>
   );
 }

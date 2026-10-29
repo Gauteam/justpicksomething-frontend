@@ -9,7 +9,7 @@ import {
   errorMessage,
   reorderItems,
   setVote,
-  splitTitles,
+  updateSettings,
   type Column,
   type Item,
   type RoomData,
@@ -19,10 +19,12 @@ import { useRoomSession } from "@/lib/session";
 import { useRoom } from "@/lib/use-room";
 import { ShareCard } from "@/components/share-card";
 import { errorClass, inputClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
+import { BulkAddTable } from "./bulk-add-table";
 import { ColumnsPanel } from "./columns-panel";
-import { ItemList } from "./item-list";
+import { ItemList, type Voting } from "./item-list";
 import { ItemPanel } from "./item-panel";
 import { JoinForm } from "./join-form";
+import { SettingsPanel } from "./settings-panel";
 
 export function RoomView({ slug }: { slug: string }) {
   const session = useRoomSession(slug);
@@ -62,29 +64,47 @@ type RoomProps = {
 function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProps) {
   const [showInvite, setShowInvite] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>(() => loadSort(slug));
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const { room } = data;
   const names = new Map(data.members.map((m) => [m.id, m.displayName]));
   const active = effectiveSort(sort, data.columns);
   const items = sortItems(data.items, data.columns, active);
   const openItem = data.items.find((i) => i.id === openItemId);
   const isAdmin = data.me.isAdmin;
+  const locked = room.lockedAt !== null;
+  const canEdit = !locked;
+  const full = room.maxItems !== null && data.items.length >= room.maxItems;
+
+  const votesUsed = data.items.reduce((n, i) => n + Math.max(i.myVote, 0), 0);
+  const voting: Voting = {
+    mode: room.voteMode,
+    allowDuplicates: room.allowDuplicateVotes,
+    votesLeft: room.votesPerMember - votesUsed,
+    locked,
+    onVote: vote,
+  };
+
+  // The top pick: every option tied for the highest score above zero.
+  const topScore = Math.max(0, ...data.items.map((i) => i.score));
+  const topPicks = topScore > 0 ? data.items.filter((i) => i.score === topScore) : [];
+  const highlight = new Set(locked ? topPicks.map((i) => i.id) : []);
 
   function changeSort(next: Sort) {
     setSort(next);
     saveSort(slug, next);
   }
 
-  async function vote(item: Item, value: 1 | -1) {
-    const next = item.myVote === value ? 0 : value;
+  async function vote(item: Item, next: number) {
     // Optimistic update; the refresh below brings the authoritative tallies.
     setData((d) => d && { ...d, items: d.items.map((it) => (it.id === item.id ? applyVote(it, next) : it)) });
     setActionError(null);
     try {
       if (next === 0) await clearVote(slug, token, item.id);
-      else await setVote(slug, token, item.id, next);
+      else await setVote(slug, token, item.id, room.voteMode, next);
     } catch (err) {
       setActionError(errorMessage(err, "Couldn't save your vote."));
     }
@@ -105,30 +125,76 @@ function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProp
     await refresh();
   }
 
+  async function setLocked(lock: boolean) {
+    if (lock && !window.confirm("Lock in? Options, votes, columns and comments will be frozen until you unlock."))
+      return;
+    setActionError(null);
+    try {
+      await updateSettings(slug, token, { locked: lock });
+    } catch (err) {
+      setActionError(errorMessage(err, lock ? "Couldn't lock the room." : "Couldn't unlock the room."));
+    }
+    await refresh();
+  }
+
   return (
     <div className="space-y-6">
       <header className="space-y-3">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <Link href="/" className="text-sm text-zinc-500 hover:underline">
               Just Pick Something
             </Link>
-            <h1 className="text-2xl font-semibold tracking-tight break-words">{data.room.name}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight break-words">{room.name}</h1>
           </div>
-          <button type="button" className={secondaryButtonClass} onClick={() => setShowInvite((v) => !v)}>
-            {showInvite ? "Close" : "Invite"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {isAdmin && !locked && (
+              <button type="button" className={secondaryButtonClass} onClick={() => setShowSettings(true)}>
+                Settings
+              </button>
+            )}
+            {isAdmin && (
+              <button type="button" className={secondaryButtonClass} onClick={() => setLocked(!locked)}>
+                {locked ? "Unlock" : "Lock in"}
+              </button>
+            )}
+            <button type="button" className={secondaryButtonClass} onClick={() => setShowInvite((v) => !v)}>
+              {showInvite ? "Close" : "Invite"}
+            </button>
+          </div>
         </div>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
           {data.members.length} {data.members.length === 1 ? "person" : "people"}:{" "}
           {data.members.map((m) => (m.id === data.me.id ? `${m.displayName} (you)` : m.displayName)).join(", ")}
         </p>
-        {showInvite && <ShareCard slug={slug} roomName={data.room.name} passcode={passcode} />}
+        {showInvite && <ShareCard slug={slug} roomName={room.name} passcode={passcode} />}
       </header>
 
-      <div className="max-w-2xl">
-        <AddItemForm slug={slug} token={token} onAdded={refresh} />
-      </div>
+      {locked && (
+        <div className="rounded-xl border border-amber-400 bg-amber-50 p-4 dark:border-amber-600 dark:bg-amber-950/40">
+          <p className="text-xs font-medium tracking-wide text-amber-800 uppercase dark:text-amber-300">Locked in</p>
+          <p className="mt-1 text-lg font-semibold">
+            {topPicks.length === 0
+              ? "No option got any votes."
+              : topPicks.length === 1
+                ? `The pick: ${topPicks[0].title}`
+                : `Tie: ${topPicks.map((i) => i.title).join(", ")}`}
+          </p>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {isAdmin ? "Unlock to make changes or keep voting." : "An admin can unlock the room to make changes."}
+          </p>
+        </div>
+      )}
+
+      {canEdit && (
+        <div className="max-w-2xl">
+          {full ? (
+            <p className="text-sm text-zinc-500">This room is full ({room.maxItems} options).</p>
+          ) : (
+            <AddItemForm slug={slug} token={token} onAdded={refresh} />
+          )}
+        </div>
+      )}
 
       {(actionError || error) && <p className={errorClass}>{actionError ?? error}</p>}
 
@@ -140,13 +206,22 @@ function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProp
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SortSelect sort={active} columns={data.columns} onChange={changeSort} />
-            {isAdmin && (
-              <button type="button" className={secondaryButtonClass} onClick={() => setShowColumns(true)}>
-                Columns{data.columns.length > 0 ? ` (${data.columns.length})` : ""}
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {room.voteMode === "budget" && !locked && (
+                <p className="text-sm text-zinc-600 dark:text-zinc-400" aria-live="polite">
+                  {voting.votesLeft >= 0
+                    ? `${voting.votesLeft} of ${room.votesPerMember} votes left`
+                    : `${-voting.votesLeft} over your ${room.votesPerMember} votes — take some back`}
+                </p>
+              )}
+              {isAdmin && canEdit && (
+                <button type="button" className={secondaryButtonClass} onClick={() => setShowColumns(true)}>
+                  Columns{data.columns.length > 0 ? ` (${data.columns.length})` : ""}
+                </button>
+              )}
+            </div>
           </div>
-          {isAdmin && active.key !== "manual" && (
+          {isAdmin && canEdit && active.key !== "manual" && (
             <p className="text-xs text-zinc-500">Switch to “Manual order” to drag options into place.</p>
           )}
           <ItemList
@@ -154,24 +229,23 @@ function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProp
             columns={data.columns}
             names={names}
             sort={active}
-            canDrag={isAdmin && active.key === "manual"}
+            canDrag={isAdmin && canEdit && active.key === "manual"}
             onSort={(key) => changeSort(nextSort(active, key))}
-            onVote={vote}
+            voting={voting}
+            highlight={highlight}
             onOpen={(item) => setOpenItemId(item.id)}
             onReorder={reorder}
           />
         </div>
       )}
 
-      {data.items.length === 0 && isAdmin && (
+      {data.items.length === 0 && isAdmin && canEdit && (
         <button type="button" className={secondaryButtonClass} onClick={() => setShowColumns(true)}>
           Set up columns
         </button>
       )}
 
-      <div className="max-w-2xl">
-        <BulkAddForm slug={slug} token={token} onAdded={refresh} />
-      </div>
+      {canEdit && !full && <BulkAddTable slug={slug} token={token} columns={data.columns} onAdded={refresh} />}
 
       {openItem && (
         <ItemPanel
@@ -182,19 +256,29 @@ function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProp
           columns={data.columns}
           members={data.members}
           me={data.me}
-          roomUpdatedAt={data.room.updatedAt}
-          onVote={vote}
+          roomUpdatedAt={room.updatedAt}
+          voting={voting}
+          readOnly={locked}
           onChanged={refresh}
           onClose={() => setOpenItemId(null)}
         />
       )}
-      {showColumns && isAdmin && (
+      {showColumns && isAdmin && canEdit && (
         <ColumnsPanel
           slug={slug}
           token={token}
           columns={data.columns}
           onChanged={refresh}
           onClose={() => setShowColumns(false)}
+        />
+      )}
+      {showSettings && isAdmin && !locked && (
+        <SettingsPanel
+          slug={slug}
+          token={token}
+          room={room}
+          onChanged={refresh}
+          onClose={() => setShowSettings(false)}
         />
       )}
     </div>
@@ -238,12 +322,15 @@ function SortSelect({ sort, columns, onChange }: { sort: Sort; columns: Column[]
   );
 }
 
+// The item as it would look with the viewer's vote changed to `next`: ±1 in
+// thumbs mode, a count of votes in budget mode, 0 for none.
 function applyVote(item: Item, next: number): Item {
   let { up, down } = item;
-  if (item.myVote === 1) up--;
-  if (item.myVote === -1) down--;
-  if (next === 1) up++;
-  if (next === -1) down++;
+  const remove = item.myVote;
+  if (remove > 0) up -= remove;
+  if (remove < 0) down += remove;
+  if (next > 0) up += next;
+  if (next < 0) down -= next;
   return { ...item, up, down, score: up - down, myVote: next };
 }
 
@@ -258,7 +345,7 @@ function AddItemForm({ slug, token, onAdded }: { slug: string; token: string; on
     setBusy(true);
     setError(null);
     try {
-      const added = await addItems(slug, token, [title]);
+      const added = await addItems(slug, token, [{ title }]);
       if (added.length === 0) {
         setError("That's already in the list.");
         return;
@@ -290,69 +377,6 @@ function AddItemForm({ slug, token, onAdded }: { slug: string; token: string; on
           Add
         </button>
       </div>
-      {error && <p className={errorClass}>{error}</p>}
-    </form>
-  );
-}
-
-function BulkAddForm({ slug, token, onAdded }: { slug: string; token: string; onAdded: () => Promise<void> }) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const titles = splitTitles(text);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (titles.length === 0) return;
-    setBusy(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const added = await addItems(slug, token, titles);
-      const skipped = titles.length - added.length;
-      setMessage(
-        `Added ${added.length} ${added.length === 1 ? "option" : "options"}.` +
-          (skipped > 0 ? ` Skipped ${skipped} already in the list.` : ""),
-      );
-      setText("");
-      await onAdded();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't add those.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="space-y-2 border-t border-zinc-200 pt-6 dark:border-zinc-800">
-      <label htmlFor="bulk-items" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-        Add several at once
-      </label>
-      <textarea
-        id="bulk-items"
-        className={`${inputClass} min-h-28`}
-        placeholder={"One per line, or separated by commas:\nLake house, Cabin, Beach condo"}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-zinc-500" aria-live="polite">
-          {titles.length > 50
-            ? "50 at most at a time."
-            : titles.length > 0
-              ? `${titles.length} ${titles.length === 1 ? "option" : "options"}`
-              : ""}
-        </p>
-        <button
-          type="submit"
-          className={primaryButtonClass}
-          disabled={busy || titles.length === 0 || titles.length > 50}
-        >
-          {busy ? "Adding…" : titles.length > 0 ? `Add ${titles.length}` : "Add"}
-        </button>
-      </div>
-      {message && <p className="text-sm text-zinc-600 dark:text-zinc-400">{message}</p>}
       {error && <p className={errorClass}>{error}</p>}
     </form>
   );

@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Column, Item } from "@/lib/api";
+import type { Column, Item, VoteMode } from "@/lib/api";
 import { effectiveSort, isSortable, type Sort, type SortKey } from "@/lib/sort";
 import { Linkify } from "@/components/linkify";
 
@@ -28,12 +28,25 @@ type Props = {
   sort: Sort;
   canDrag: boolean;
   onSort: (key: SortKey) => void;
-  onVote: (item: Item, value: 1 | -1) => void;
+  voting: Voting;
+  // Highlighted rows (the top pick once the room is locked in).
+  highlight: Set<string>;
   onOpen: (item: Item) => void;
   onReorder: (ids: string[]) => void;
 };
 
-export function ItemList({ items, columns, names, sort, canDrag, onSort, onVote, onOpen, onReorder }: Props) {
+export function ItemList({
+  items,
+  columns,
+  names,
+  sort,
+  canDrag,
+  onSort,
+  voting,
+  highlight,
+  onOpen,
+  onReorder,
+}: Props) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -48,7 +61,7 @@ export function ItemList({ items, columns, names, sort, canDrag, onSort, onVote,
     ...columns.map((c) =>
       c.type === "boolean" ? "6rem" : c.type === "textarea" ? "minmax(12rem, 2fr)" : "minmax(8rem, 1fr)",
     ),
-    "8.5rem",
+    voting.mode === "budget" && voting.allowDuplicates ? "8rem" : "7rem",
     "3.5rem",
   ]
     .filter(Boolean)
@@ -101,7 +114,9 @@ export function ItemList({ items, columns, names, sort, canDrag, onSort, onVote,
                 {(handle) => (
                   <div
                     role="row"
-                    className="grid items-center gap-3 border-b border-zinc-100 bg-white px-3 py-2 last:border-b-0 dark:border-zinc-900 dark:bg-zinc-950"
+                    className={`grid items-center gap-3 border-b border-zinc-100 px-3 py-2 last:border-b-0 dark:border-zinc-900 ${
+                      highlight.has(item.id) ? "bg-amber-50 dark:bg-amber-950/40" : "bg-white dark:bg-zinc-950"
+                    }`}
                     style={{ gridTemplateColumns }}
                   >
                     {canDrag && handle}
@@ -124,7 +139,7 @@ export function ItemList({ items, columns, names, sort, canDrag, onSort, onVote,
                       </div>
                     ))}
                     <div role="cell" className="flex gap-1">
-                      <Votes item={item} onVote={onVote} />
+                      <Votes item={item} voting={voting} />
                     </div>
                     <div role="cell">
                       <CommentButton item={item} onOpen={onOpen} />
@@ -143,7 +158,13 @@ export function ItemList({ items, columns, names, sort, canDrag, onSort, onVote,
           {items.map((item, i) => (
             <SortableRow key={item.id} id={item.id} disabled={!canDrag} as="li">
               {(handle) => (
-                <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                <div
+                  className={`rounded-xl border p-3 ${
+                    highlight.has(item.id)
+                      ? "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/40"
+                      : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
+                  }`}
+                >
                   <div className="flex items-start gap-2">
                     {canDrag && handle}
                     <span className="w-5 shrink-0 pt-0.5 text-right text-sm text-zinc-400 tabular-nums">{i + 1}</span>
@@ -173,7 +194,7 @@ export function ItemList({ items, columns, names, sort, canDrag, onSort, onVote,
                     </dl>
                   )}
                   <div className="mt-3 flex items-center gap-2 pl-7">
-                    <Votes item={item} onVote={onVote} />
+                    <Votes item={item} voting={voting} />
                     <span className="flex-1" />
                     <CommentButton item={item} onOpen={onOpen} />
                   </div>
@@ -264,42 +285,114 @@ export function FieldValue({ column, value, clamp }: { column: Column; value: un
   );
 }
 
-export function Votes({ item, onVote }: { item: Item; onVote: (item: Item, value: 1 | -1) => void }) {
+// Everything the vote controls need about the room and the viewer.
+export type Voting = {
+  mode: VoteMode;
+  allowDuplicates: boolean;
+  // Budget mode: votes the viewer hasn't placed yet.
+  votesLeft: number;
+  locked: boolean;
+  // Sets the viewer's vote on an item to `next` (0 clears it).
+  onVote: (item: Item, next: number) => void;
+};
+
+export function Votes({ item, voting }: { item: Item; voting: Voting }) {
+  const { mode, allowDuplicates, votesLeft, locked, onVote } = voting;
+
+  if (mode === "thumbs") {
+    return (
+      <>
+        <VoteButton
+          label="Thumbs up"
+          content={
+            <>
+              <span aria-hidden>👍</span>
+              {item.up}
+            </>
+          }
+          active={item.myVote === 1}
+          disabled={locked}
+          onClick={() => onVote(item, item.myVote === 1 ? 0 : 1)}
+        />
+        <VoteButton
+          label="Thumbs down"
+          content={
+            <>
+              <span aria-hidden>👎</span>
+              {item.down}
+            </>
+          }
+          active={item.myVote === -1}
+          disabled={locked}
+          onClick={() => onVote(item, item.myVote === -1 ? 0 : -1)}
+        />
+      </>
+    );
+  }
+
+  const total = `${item.up} ${item.up === 1 ? "vote" : "votes"}`;
+  if (!allowDuplicates) {
+    const voted = item.myVote > 0;
+    return (
+      <VoteButton
+        label={voted ? `Remove your vote (${total})` : `Vote (${total})`}
+        content={
+          <>
+            {voted ? "✓" : "+"} {item.up}
+          </>
+        }
+        active={voted}
+        disabled={locked || (!voted && votesLeft <= 0)}
+        onClick={() => onVote(item, voted ? 0 : 1)}
+      />
+    );
+  }
+
   return (
-    <>
+    <span className="inline-flex items-center gap-1">
       <VoteButton
-        label="Thumbs up"
-        emoji="👍"
-        count={item.up}
-        active={item.myVote === 1}
-        onClick={() => onVote(item, 1)}
+        label="Take back a vote"
+        content="−"
+        active={false}
+        disabled={locked || item.myVote <= 0}
+        onClick={() => onVote(item, item.myVote - 1)}
       />
+      <span className="min-w-12 text-center text-sm tabular-nums" aria-label={`${total}, ${item.myVote} yours`}>
+        {item.up}
+        {item.myVote > 0 && <span className="text-zinc-500"> ({item.myVote})</span>}
+      </span>
       <VoteButton
-        label="Thumbs down"
-        emoji="👎"
-        count={item.down}
-        active={item.myVote === -1}
-        onClick={() => onVote(item, -1)}
+        label="Add a vote"
+        content="+"
+        active={false}
+        disabled={locked || votesLeft <= 0}
+        onClick={() => onVote(item, item.myVote + 1)}
       />
-    </>
+    </span>
   );
 }
 
-function VoteButton(props: { label: string; emoji: string; count: number; active: boolean; onClick: () => void }) {
+function VoteButton(props: {
+  label: string;
+  content: React.ReactNode;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
-      aria-label={`${props.label} (${props.count})`}
+      aria-label={props.label}
       aria-pressed={props.active}
+      disabled={props.disabled}
       onClick={props.onClick}
-      className={`inline-flex min-w-12 items-center justify-center gap-1 rounded-lg border px-2 py-1 text-sm tabular-nums transition ${
+      className={`inline-flex min-w-10 items-center justify-center gap-1 rounded-lg border px-2 py-1 text-sm tabular-nums transition disabled:cursor-not-allowed disabled:opacity-50 ${
         props.active
           ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-          : "border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          : "border-zinc-300 enabled:hover:bg-zinc-100 dark:border-zinc-700 dark:enabled:hover:bg-zinc-800"
       }`}
     >
-      <span aria-hidden>{props.emoji}</span>
-      {props.count}
+      {props.content}
     </button>
   );
 }
