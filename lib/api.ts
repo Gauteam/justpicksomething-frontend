@@ -48,7 +48,7 @@ async function request(path: string, init: RequestInit & { token?: string } = {}
     throw new ApiError(0, "Can't reach the server. Check your connection.");
   }
 
-  if (!res.ok && res.status !== 304) {
+  if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new ApiError(res.status, body?.error ?? `Request failed (${res.status})`);
   }
@@ -75,17 +75,33 @@ export async function joinRoom(slug: string, passcode: string, displayName: stri
 export async function getRoom(slug: string, token: string, since?: string | null): Promise<RoomData | null> {
   const query = since ? `?since=${encodeURIComponent(since)}` : "";
   const res = await request(`/rooms/${encodeURIComponent(slug)}${query}`, { token });
-  if (res.status === 304) return null;
-  return res.json();
+  const body = (await res.json()) as RoomData | { unchanged: true };
+  return "unchanged" in body ? null : body;
 }
 
-export async function addItem(slug: string, token: string, title: string): Promise<Item> {
+// Adds items in order. Titles already in the room (ignoring case) are skipped,
+// so the result may be shorter than `titles`.
+export async function addItems(slug: string, token: string, titles: string[]): Promise<Item[]> {
   const res = await request(`/rooms/${encodeURIComponent(slug)}/items`, {
     method: "POST",
     token,
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ titles }),
   });
-  return res.json();
+  return ((await res.json()) as { items: Item[] }).items;
+}
+
+// Splits pasted text into titles: one per line or comma-separated.
+export function splitTitles(text: string): string[] {
+  const seen = new Set<string>();
+  return text
+    .split(/[\n,]/)
+    .map((t) => t.trim())
+    .filter((t) => {
+      const key = t.toLowerCase();
+      if (!t || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 export async function setVote(slug: string, token: string, itemId: string, value: 1 | -1) {

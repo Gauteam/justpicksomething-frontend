@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { addItem, ApiError, clearVote, setVote, type Item, type RoomData } from "@/lib/api";
+import { addItems, ApiError, clearVote, setVote, splitTitles, type Item, type RoomData } from "@/lib/api";
 import { useRoomSession } from "@/lib/session";
 import { useRoom } from "@/lib/use-room";
 import { ShareCard } from "@/components/share-card";
@@ -125,6 +125,8 @@ function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProp
           ))}
         </ol>
       )}
+
+      <BulkAddForm slug={slug} token={token} onAdded={refresh} />
     </div>
   );
 }
@@ -168,7 +170,11 @@ function AddItemForm({ slug, token, onAdded }: { slug: string; token: string; on
     setBusy(true);
     setError(null);
     try {
-      await addItem(slug, token, title);
+      const added = await addItems(slug, token, [title]);
+      if (added.length === 0) {
+        setError("That's already in the list.");
+        return;
+      }
       setTitle("");
       await onAdded();
     } catch (err) {
@@ -196,6 +202,69 @@ function AddItemForm({ slug, token, onAdded }: { slug: string; token: string; on
           Add
         </button>
       </div>
+      {error && <p className={errorClass}>{error}</p>}
+    </form>
+  );
+}
+
+function BulkAddForm({ slug, token, onAdded }: { slug: string; token: string; onAdded: () => Promise<void> }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const titles = splitTitles(text);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (titles.length === 0) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const added = await addItems(slug, token, titles);
+      const skipped = titles.length - added.length;
+      setMessage(
+        `Added ${added.length} ${added.length === 1 ? "option" : "options"}.` +
+          (skipped > 0 ? ` Skipped ${skipped} already in the list.` : ""),
+      );
+      setText("");
+      await onAdded();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't add those.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-2 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+      <label htmlFor="bulk-items" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        Add several at once
+      </label>
+      <textarea
+        id="bulk-items"
+        className={`${inputClass} min-h-28`}
+        placeholder={"One per line, or separated by commas:\nLake house, Cabin, Beach condo"}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-zinc-500" aria-live="polite">
+          {titles.length > 50
+            ? "50 at most at a time."
+            : titles.length > 0
+              ? `${titles.length} ${titles.length === 1 ? "option" : "options"}`
+              : ""}
+        </p>
+        <button
+          type="submit"
+          className={primaryButtonClass}
+          disabled={busy || titles.length === 0 || titles.length > 50}
+        >
+          {busy ? "Adding…" : titles.length > 0 ? `Add ${titles.length}` : "Add"}
+        </button>
+      </div>
+      {message && <p className="text-sm text-zinc-600 dark:text-zinc-400">{message}</p>}
       {error && <p className={errorClass}>{error}</p>}
     </form>
   );
