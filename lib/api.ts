@@ -4,11 +4,22 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080
 
 export type Member = { id: string; displayName: string; isAdmin: boolean };
 
+export type ColumnType = "text" | "boolean" | "textarea";
+
+export type Column = { id: string; name: string; type: ColumnType; position: number };
+
+// Column values keyed by column ID: string for text/textarea, boolean for
+// boolean. Missing means empty.
+export type Fields = Record<string, string | boolean>;
+
 export type Item = {
   id: string;
   title: string;
   createdBy: string | null;
   createdAt: string;
+  fields: Fields;
+  position: number;
+  commentCount: number;
   up: number;
   down: number;
   score: number;
@@ -19,7 +30,17 @@ export type RoomData = {
   room: { slug: string; name: string; updatedAt: string };
   me: Member;
   members: Member[];
+  columns: Column[];
   items: Item[];
+};
+
+export type Comment = {
+  id: string;
+  itemId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  editedAt: string | null;
 };
 
 export class ApiError extends Error {
@@ -118,3 +139,66 @@ export async function clearVote(slug: string, token: string, itemId: string) {
     token,
   });
 }
+
+const roomPath = (slug: string) => `/rooms/${encodeURIComponent(slug)}`;
+
+// Edits an item's title and/or column values. A null value clears a column.
+export async function updateItem(
+  slug: string,
+  token: string,
+  itemId: string,
+  patch: { title?: string; fields?: Record<string, string | boolean | null> },
+) {
+  await request(`${roomPath(slug)}/items/${itemId}`, { method: "PATCH", token, body: JSON.stringify(patch) });
+}
+
+// Sets the manual order; ids must list every item in the room.
+export async function reorderItems(slug: string, token: string, ids: string[]) {
+  await request(`${roomPath(slug)}/items/order`, { method: "PUT", token, body: JSON.stringify({ ids }) });
+}
+
+export async function addColumn(slug: string, token: string, name: string, type: ColumnType): Promise<Column> {
+  const res = await request(`${roomPath(slug)}/columns`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ name, type }),
+  });
+  return res.json();
+}
+
+export async function renameColumn(slug: string, token: string, columnId: string, name: string) {
+  await request(`${roomPath(slug)}/columns/${columnId}`, { method: "PATCH", token, body: JSON.stringify({ name }) });
+}
+
+export async function deleteColumn(slug: string, token: string, columnId: string) {
+  await request(`${roomPath(slug)}/columns/${columnId}`, { method: "DELETE", token });
+}
+
+// Sets the column order; ids must list every column in the room.
+export async function reorderColumns(slug: string, token: string, ids: string[]) {
+  await request(`${roomPath(slug)}/columns/order`, { method: "PUT", token, body: JSON.stringify({ ids }) });
+}
+
+export async function listComments(slug: string, token: string, itemId: string): Promise<Comment[]> {
+  const res = await request(`${roomPath(slug)}/items/${itemId}/comments`, { token });
+  return ((await res.json()) as { comments: Comment[] }).comments;
+}
+
+export async function addComment(slug: string, token: string, itemId: string, body: string): Promise<Comment> {
+  const res = await request(`${roomPath(slug)}/items/${itemId}/comments`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ body }),
+  });
+  return res.json();
+}
+
+export async function editComment(slug: string, token: string, commentId: string, body: string) {
+  await request(`${roomPath(slug)}/comments/${commentId}`, { method: "PUT", token, body: JSON.stringify({ body }) });
+}
+
+export async function deleteComment(slug: string, token: string, commentId: string) {
+  await request(`${roomPath(slug)}/comments/${commentId}`, { method: "DELETE", token });
+}
+
+export const errorMessage = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
