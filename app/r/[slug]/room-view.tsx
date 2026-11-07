@@ -273,7 +273,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
 
       {data.items.length === 0 && isAdmin && canEdit && (
         <button type="button" className={secondaryButtonClass} onClick={() => setShowColumns(true)}>
-          Set up columns
+          {data.columns.length > 0 ? `Columns (${data.columns.length})` : "Set up columns"}
         </button>
       )}
 
