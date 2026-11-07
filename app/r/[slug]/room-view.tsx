@@ -8,6 +8,7 @@ import {
   reorderItems,
   setVote,
   updateItem,
+  deleteItem,
   updateSettings,
   type Column,
   type Item,
@@ -16,6 +17,7 @@ import {
 import { effectiveSort, isSortable, loadSort, nextSort, saveSort, sortItems, type Sort } from "@/lib/sort";
 import { updateSession, useRoomSession, type RoomSession } from "@/lib/session";
 import { useRoom } from "@/lib/use-room";
+import { useConfirm } from "@/components/confirm-dialog";
 import { ShareCard } from "@/components/share-card";
 import { errorClass, secondaryButtonClass } from "@/components/styles";
 import { AddButton, AddRowsCards, AddRowsTable, AddStatus, useNewRows } from "./add-rows";
@@ -67,6 +69,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
   const [showSettings, setShowSettings] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const confirm = useConfirm();
   const [sort, setSort] = useState<Sort>(() => loadSort(slug));
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -129,6 +132,25 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
     await refresh();
   }
 
+  async function deleteOption(item: Item) {
+    const ok = await confirm({
+      title: `Delete “${item.title}”?`,
+      message: "Its votes and comments will be deleted too. This can't be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setActionError(null);
+    try {
+      await deleteItem(slug, token, item.id);
+      setData((d) => d && { ...d, items: d.items.filter((it) => it.id !== item.id) });
+      setOpenItemId((id) => (id === item.id ? null : id));
+    } catch (err) {
+      setActionError(errorMessage(err, `Couldn't delete ${item.title}.`));
+    }
+    await refresh();
+  }
+
   // Saves a value edited in place in the table.
   async function editField(item: Item, column: Column, value: string | boolean | null) {
     setData(
@@ -168,7 +190,14 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
   }
 
   async function setLocked(lock: boolean) {
-    if (lock && !window.confirm("Lock in? Options, votes, columns and comments will be frozen until you unlock."))
+    if (
+      lock &&
+      !(await confirm({
+        title: "Lock in?",
+        message: "Options, votes, columns and comments will be frozen until an admin unlocks the room.",
+        confirmLabel: "Lock in",
+      }))
+    )
       return;
     setActionError(null);
     try {
@@ -278,6 +307,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
           onOpen={(item) => setOpenItemId(item.id)}
           onReorder={reorder}
           onEditField={isAdmin && canEdit ? editField : undefined}
+          onDelete={isAdmin && canEdit ? deleteOption : undefined}
           footer={adding ? (grid) => <AddRowsTable s={newRows} columns={data.columns} {...grid} /> : undefined}
           aside={adding ? <AddButton s={newRows} className="h-9 w-10" /> : undefined}
         />
@@ -305,6 +335,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
           voting={voting}
           readOnly={locked}
           canEditItem={isAdmin && canEdit}
+          onDelete={() => deleteOption(openItem)}
           onChanged={refresh}
           onClose={() => setOpenItemId(null)}
         />

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { errorMessage, updateSettings, type Room, type SettingsPatch, type VoteMode } from "@/lib/api";
 import { Panel } from "@/components/panel";
 import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/styles";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type Props = {
   slug: string;
@@ -15,6 +16,7 @@ type Props = {
 
 // Admin-only room settings. Locking and unlocking live in the room header.
 export function SettingsPanel({ slug, token, room, onChanged, onClose }: Props) {
+  const confirm = useConfirm();
   const [name, setName] = useState(room.name);
   const [maxItems, setMaxItems] = useState(room.maxItems?.toString() ?? "");
   const [voteMode, setVoteMode] = useState<VoteMode>(room.voteMode);
@@ -44,10 +46,23 @@ export function SettingsPanel({ slug, token, room, onChanged, onClose }: Props) 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!dirty || invalid) return;
-    if (patch.voteMode && !window.confirm("Changing the voting style clears everyone's votes. Continue?")) return;
+    if (
+      patch.voteMode &&
+      !(await confirm({
+        title: "Change the voting style?",
+        message: "Everyone's votes will be cleared and voting starts over.",
+        confirmLabel: "Change and clear votes",
+        tone: "danger",
+      }))
+    )
+      return;
     if (
       patch.allowDuplicateVotes === false &&
-      !window.confirm("Anyone with several votes on one option will keep just one. Continue?")
+      !(await confirm({
+        title: "Allow only one vote per option?",
+        message: "Anyone with several votes on one option will keep just one.",
+        confirmLabel: "Save",
+      }))
     )
       return;
     setBusy(true);

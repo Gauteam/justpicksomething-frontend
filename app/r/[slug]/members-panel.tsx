@@ -5,6 +5,7 @@ import { errorMessage, removeMember, resetPasscode, setMemberAdmin, type Member,
 import { updateSession } from "@/lib/session";
 import { Panel } from "@/components/panel";
 import { errorClass, secondaryButtonClass } from "@/components/styles";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type Props = {
   slug: string;
@@ -19,6 +20,7 @@ type Props = {
 // Everyone sees who's in the room; admins can promote, demote and remove
 // people and change the passcode.
 export function MembersPanel({ slug, token, room, members, me, onChanged, onClose }: Props) {
+  const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [newPasscode, setNewPasscode] = useState<string | null>(null);
@@ -36,19 +38,35 @@ export function MembersPanel({ slug, token, room, members, me, onChanged, onClos
     await onChanged();
   }
 
-  function onRemove(m: Member) {
-    const who = m.id === me.id ? "yourself" : m.displayName;
-    const warning =
-      m.id === me.id
-        ? "Leave this room? Your votes and comments will be deleted and you'll need the passcode to come back."
-        : `Remove ${m.displayName}? Their votes and comments will be deleted. They can rejoin with the passcode.`;
-    if (!window.confirm(warning)) return;
+  async function onRemove(m: Member) {
+    const self = m.id === me.id;
+    const who = self ? "yourself" : m.displayName;
+    const ok = await confirm(
+      self
+        ? {
+            title: "Leave this room?",
+            message: "Your votes and comments will be deleted, and you'll need the passcode to come back.",
+            confirmLabel: "Leave room",
+            tone: "danger",
+          }
+        : {
+            title: `Remove ${m.displayName}?`,
+            message: "Their votes and comments will be deleted. They can rejoin with the passcode.",
+            confirmLabel: "Remove",
+            tone: "danger",
+          },
+    );
+    if (!ok) return;
     run(m.id, () => removeMember(slug, token, m.id), `Couldn't remove ${who}.`);
   }
 
   async function onResetPasscode() {
-    if (!window.confirm("Make a new passcode? People already in the room stay in; the old passcode stops working."))
-      return;
+    const ok = await confirm({
+      title: "Make a new passcode?",
+      message: "People already in the room stay in. The old passcode stops working.",
+      confirmLabel: "New passcode",
+    });
+    if (!ok) return;
     setBusyId("passcode");
     setError(null);
     try {

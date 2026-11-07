@@ -42,6 +42,8 @@ type Props = {
   aside?: React.ReactNode;
   // Saves a value edited in place in the table; absent = read-only (locked).
   onEditField?: (item: Item, column: Column, value: string | boolean | null) => Promise<void>;
+  // Asks to delete an option (opens a confirmation); absent = no × buttons.
+  onDelete?: (item: Item) => void;
 };
 
 export function ItemList({
@@ -58,6 +60,7 @@ export function ItemList({
   footer,
   aside,
   onEditField,
+  onDelete,
 }: Props) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -77,6 +80,7 @@ export function ItemList({
     ...columns.map((c) =>
       c.type === "boolean" ? "6rem" : c.type === "textarea" ? "minmax(12rem, 2fr)" : "minmax(8rem, 1fr)",
     ),
+    onDelete ? "2rem" : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -125,6 +129,7 @@ export function ItemList({
                     </span>
                   ),
                 )}
+                {onDelete && <span role="columnheader" aria-label="Delete" />}
               </div>
               {items.length === 0 && (
                 <p className="px-3 py-6 text-center text-sm text-zinc-500">
@@ -174,6 +179,11 @@ export function ItemList({
                           )}
                         </div>
                       ))}
+                      {onDelete && (
+                        <div role="cell">
+                          <DeleteButton item={item} onDelete={onDelete} />
+                        </div>
+                      )}
                     </div>
                   )}
                 </SortableRow>
@@ -211,6 +221,7 @@ export function ItemList({
                       </button>
                       <p className="text-xs text-zinc-500">{addedBy(item, names)}</p>
                     </div>
+                    {onDelete && <DeleteButton item={item} onDelete={onDelete} />}
                   </div>
                   {columns.some((c) => item.fields[c.id] !== undefined) && (
                     <dl className="mt-2 space-y-1 pl-7 text-sm">
@@ -556,6 +567,20 @@ function VoteButton(props: {
       }`}
     >
       {props.content}
+    </button>
+  );
+}
+
+function DeleteButton({ item, onDelete }: { item: Item; onDelete: (item: Item) => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Delete ${item.title}`}
+      title="Delete option"
+      onClick={() => onDelete(item)}
+      className="rounded px-1.5 py-0.5 text-lg leading-none text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+    >
+      ×
     </button>
   );
 }

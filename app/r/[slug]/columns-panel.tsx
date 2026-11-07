@@ -28,6 +28,7 @@ import {
 import { Panel } from "@/components/panel";
 import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/styles";
 import { SortableRow } from "./item-list";
+import { useConfirm } from "@/components/confirm-dialog";
 
 const typeLabels: Record<ColumnType, string> = { text: "Short text", boolean: "Yes / no", textarea: "Long text" };
 
@@ -40,6 +41,7 @@ type Props = {
 };
 
 export function ColumnsPanel({ slug, token, columns, onChanged, onClose }: Props) {
+  const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
   // Local order while a reorder is saving, so the list doesn't jump back.
   const [order, setOrder] = useState<string[] | null>(null);
@@ -70,7 +72,13 @@ export function ColumnsPanel({ slug, token, columns, onChanged, onClose }: Props
   }
 
   async function onDelete(c: Column) {
-    if (!window.confirm(`Delete “${c.name}” and its values on every option?`)) return;
+    const ok = await confirm({
+      title: `Delete the “${c.name}” column?`,
+      message: "Its values on every option will be deleted too. This can't be undone.",
+      confirmLabel: "Delete column",
+      tone: "danger",
+    });
+    if (!ok) return;
     await run(() => deleteColumn(slug, token, c.id), "Couldn't delete that column.");
   }
 

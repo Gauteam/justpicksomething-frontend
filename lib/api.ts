@@ -164,6 +164,11 @@ export async function updateItem(
   await request(`${roomPath(slug)}/items/${itemId}`, { method: "PATCH", token, body: JSON.stringify(patch) });
 }
 
+// Admin only. Deletes an option along with its votes and comments.
+export async function deleteItem(slug: string, token: string, itemId: string) {
+  await request(`${roomPath(slug)}/items/${itemId}`, { method: "DELETE", token });
+}
+
 // Sets the manual order; ids must list every item in the room.
 export async function reorderItems(slug: string, token: string, ids: string[]) {
   await request(`${roomPath(slug)}/items/order`, { method: "PUT", token, body: JSON.stringify({ ids }) });

@@ -17,6 +17,7 @@ import { Linkify } from "@/components/linkify";
 import { Panel } from "@/components/panel";
 import { errorClass, inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
 import { FieldValue, Votes, type Voting } from "./item-list";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type Props = {
   slug: string;
@@ -34,6 +35,8 @@ type Props = {
   canEditItem: boolean;
   onChanged: () => Promise<void>;
   onClose: () => void;
+  // Asks to delete this option (opens a confirmation). Shown when canEditItem.
+  onDelete: () => void;
 };
 
 export function ItemPanel(props: Props) {
@@ -46,6 +49,17 @@ export function ItemPanel(props: Props) {
         </div>
         {props.canEditItem ? <ItemEditor {...props} /> : <ItemDetails {...props} />}
         <Comments {...props} />
+        {props.canEditItem && (
+          <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
+            <button
+              type="button"
+              onClick={props.onDelete}
+              className="text-sm font-medium text-red-600 hover:underline dark:text-red-400"
+            >
+              Delete option
+            </button>
+          </div>
+        )}
       </div>
     </Panel>
   );
@@ -190,6 +204,7 @@ function ItemEditor({ slug, token, item, columns, onChanged }: Props) {
 }
 
 function Comments({ slug, token, item, members, me, roomUpdatedAt, readOnly, onChanged }: Props) {
+  const confirm = useConfirm();
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [body, setBody] = useState("");
@@ -234,7 +249,8 @@ function Comments({ slug, token, item, members, me, roomUpdatedAt, readOnly, onC
   }
 
   async function onDelete(c: Comment) {
-    if (!window.confirm("Delete this comment?")) return;
+    const ok = await confirm({ title: "Delete this comment?", confirmLabel: "Delete", tone: "danger" });
+    if (!ok) return;
     try {
       await deleteComment(slug, token, c.id);
       setComments((cs) => cs?.filter((x) => x.id !== c.id) ?? null);
