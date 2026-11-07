@@ -33,6 +33,9 @@ type Props = {
   highlight: Set<string>;
   onOpen: (item: Item) => void;
   onReorder: (ids: string[]) => void;
+  // Rendered inside the table under the last row (the new-option input row),
+  // given the table's track sizes and how many columns come before Option.
+  footer?: (grid: { gridTemplateColumns: string; lead: number }) => React.ReactNode;
 };
 
 export function ItemList({
@@ -46,6 +49,7 @@ export function ItemList({
   highlight,
   onOpen,
   onReorder,
+  footer,
 }: Props) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -54,19 +58,22 @@ export function ItemList({
   const active = effectiveSort(sort, columns);
 
   // Same track sizes for the header and every row so the "table" lines up.
-  // Votes come first so they're always in view, even when columns scroll.
+  // Votes and comments come first so they're always in view, even when
+  // columns scroll.
   const gridTemplateColumns = [
     voting.mode === "budget" && voting.allowDuplicates ? "8rem" : "7rem",
+    "3.5rem",
     canDrag ? "2rem" : null,
     "2rem",
     "minmax(12rem, 2fr)",
     ...columns.map((c) =>
       c.type === "boolean" ? "6rem" : c.type === "textarea" ? "minmax(12rem, 2fr)" : "minmax(8rem, 1fr)",
     ),
-    "3.5rem",
   ]
     .filter(Boolean)
     .join(" ");
+  // Columns before Option: votes, comments, drag handle (if any), #.
+  const lead = canDrag ? 4 : 3;
 
   function onDragEnd(e: DragEndEvent) {
     if (!e.over || e.active.id === e.over.id) return;
@@ -96,6 +103,7 @@ export function ItemList({
               style={{ gridTemplateColumns }}
             >
               <HeaderButton label="Votes" sortKey="score" active={active} onSort={onSort} />
+              <span role="columnheader" aria-label="Comments" />
               {canDrag && <span role="columnheader" aria-label="Reorder" />}
               <span role="columnheader">#</span>
               <HeaderButton label="Option" sortKey="title" active={active} onSort={onSort} />
@@ -108,8 +116,12 @@ export function ItemList({
                   </span>
                 ),
               )}
-              <span role="columnheader" aria-label="Comments" />
             </div>
+            {items.length === 0 && (
+              <p className="px-3 py-6 text-center text-sm text-zinc-500">
+                Nothing here yet. Add the first option below.
+              </p>
+            )}
             {items.map((item, i) => (
               <SortableRow key={item.id} id={item.id} disabled={!canDrag}>
                 {(handle) => (
@@ -122,6 +134,9 @@ export function ItemList({
                   >
                     <div role="cell" className="flex gap-1">
                       <Votes item={item} voting={voting} />
+                    </div>
+                    <div role="cell">
+                      <CommentButton item={item} onOpen={onOpen} />
                     </div>
                     {canDrag && handle}
                     <span role="cell" className="text-right text-sm text-zinc-400 tabular-nums">
@@ -142,13 +157,11 @@ export function ItemList({
                         <FieldValue column={c} value={item.fields[c.id]} clamp />
                       </div>
                     ))}
-                    <div role="cell">
-                      <CommentButton item={item} onOpen={onOpen} />
-                    </div>
                   </div>
                 )}
               </SortableRow>
             ))}
+            {footer?.({ gridTemplateColumns, lead })}
           </div>
         </div>,
       )}
@@ -196,7 +209,6 @@ export function ItemList({
                   )}
                   <div className="mt-3 flex items-center gap-2 pl-7">
                     <Votes item={item} voting={voting} />
-                    <span className="flex-1" />
                     <CommentButton item={item} onOpen={onOpen} />
                   </div>
                 </div>

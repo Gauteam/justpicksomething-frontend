@@ -181,9 +181,7 @@ export function CreateRoom() {
                   );
                 })}
               </div>
-              <p className="mt-2 text-xs text-zinc-500">
-                Names with ▾ have alternatives. You can add, rename or remove columns later.
-              </p>
+              <p className="mt-2 text-xs text-zinc-500">You can add, rename or remove columns later.</p>
             </fieldset>
           )}
 

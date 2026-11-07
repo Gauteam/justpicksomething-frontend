@@ -1,6 +1,4 @@
-import { CreateRoom } from "./create-room";
-import { JoinToggle } from "./join-toggle";
-import { YourRooms } from "./your-rooms";
+import { Landing } from "./landing";
 
 export default function Home() {
   return (
@@ -13,10 +11,8 @@ export default function Home() {
           Make a room, add options, vote, and stop arguing about it.
         </p>
       </header>
-      <div className="mx-auto w-full max-w-md space-y-10">
-        <CreateRoom />
-        <JoinToggle />
-        <YourRooms />
+      <div className="mx-auto w-full max-w-2xl">
+        <Landing />
       </div>
     </main>
   );

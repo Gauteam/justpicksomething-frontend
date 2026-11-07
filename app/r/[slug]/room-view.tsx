@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  addItems,
-  ApiError,
   clearVote,
   errorMessage,
   reorderItems,
@@ -18,8 +16,8 @@ import { effectiveSort, isSortable, loadSort, nextSort, saveSort, sortItems, typ
 import { updateSession, useRoomSession, type RoomSession } from "@/lib/session";
 import { useRoom } from "@/lib/use-room";
 import { ShareCard } from "@/components/share-card";
-import { errorClass, inputClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
-import { BulkAddTable } from "./bulk-add-table";
+import { errorClass, secondaryButtonClass } from "@/components/styles";
+import { AddRowsCards, AddRowsTable } from "./add-rows";
 import { ColumnsPanel } from "./columns-panel";
 import { ItemList, type Voting } from "./item-list";
 import { ItemPanel } from "./item-panel";
@@ -218,66 +216,55 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
         </div>
       )}
 
-      {canEdit && (
-        <div className="max-w-2xl">
-          {full ? (
-            <p className="text-sm text-zinc-500">This room is full ({room.maxItems} options).</p>
-          ) : (
-            <AddItemForm slug={slug} token={token} onAdded={refresh} />
-          )}
-        </div>
-      )}
-
       {(actionError || error) && <p className={errorClass}>{actionError ?? error}</p>}
 
-      {data.items.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-300 p-8 text-center text-zinc-500 dark:border-zinc-700">
-          Nothing here yet. Add the first option above.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <SortSelect sort={active} columns={data.columns} onChange={changeSort} />
-            <div className="flex items-center gap-3">
-              {room.voteMode === "budget" && !locked && (
-                <p className="text-sm text-zinc-600 dark:text-zinc-400" aria-live="polite">
-                  {voting.votesLeft >= 0
-                    ? `${voting.votesLeft} of ${room.votesPerMember} votes left`
-                    : `${-voting.votesLeft} over your ${room.votesPerMember} votes — take some back`}
-                </p>
-              )}
-              {isAdmin && canEdit && (
-                <button type="button" className={secondaryButtonClass} onClick={() => setShowColumns(true)}>
-                  Columns{data.columns.length > 0 ? ` (${data.columns.length})` : ""}
-                </button>
-              )}
-            </div>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SortSelect sort={active} columns={data.columns} onChange={changeSort} />
+          <div className="flex items-center gap-3">
+            {room.voteMode === "budget" && !locked && (
+              <p className="text-sm text-zinc-600 dark:text-zinc-400" aria-live="polite">
+                {voting.votesLeft >= 0
+                  ? `${voting.votesLeft} of ${room.votesPerMember} votes left`
+                  : `${-voting.votesLeft} over your ${room.votesPerMember} votes — take some back`}
+              </p>
+            )}
+            {isAdmin && canEdit && (
+              <button type="button" className={secondaryButtonClass} onClick={() => setShowColumns(true)}>
+                {data.columns.length > 0 ? `Columns (${data.columns.length})` : "Set up columns"}
+              </button>
+            )}
           </div>
-          {isAdmin && canEdit && active.key !== "manual" && (
-            <p className="text-xs text-zinc-500">Switch to “Manual order” to drag options into place.</p>
-          )}
-          <ItemList
-            items={items}
-            columns={data.columns}
-            names={names}
-            sort={active}
-            canDrag={isAdmin && canEdit && active.key === "manual"}
-            onSort={(key) => changeSort(nextSort(active, key))}
-            voting={voting}
-            highlight={highlight}
-            onOpen={(item) => setOpenItemId(item.id)}
-            onReorder={reorder}
-          />
         </div>
-      )}
-
-      {data.items.length === 0 && isAdmin && canEdit && (
-        <button type="button" className={secondaryButtonClass} onClick={() => setShowColumns(true)}>
-          {data.columns.length > 0 ? `Columns (${data.columns.length})` : "Set up columns"}
-        </button>
-      )}
-
-      {canEdit && !full && <BulkAddTable slug={slug} token={token} columns={data.columns} onAdded={refresh} />}
+        {isAdmin && canEdit && active.key !== "manual" && data.items.length > 1 && (
+          <p className="text-xs text-zinc-500">Switch to “Manual order” to drag options into place.</p>
+        )}
+        <ItemList
+          items={items}
+          columns={data.columns}
+          names={names}
+          sort={active}
+          canDrag={isAdmin && canEdit && active.key === "manual"}
+          onSort={(key) => changeSort(nextSort(active, key))}
+          voting={voting}
+          highlight={highlight}
+          onOpen={(item) => setOpenItemId(item.id)}
+          onReorder={reorder}
+          footer={
+            canEdit && !full
+              ? (grid) => <AddRowsTable slug={slug} token={token} columns={data.columns} onAdded={refresh} {...grid} />
+              : undefined
+          }
+        />
+        {/* Phones have cards instead of the table, so the input goes under them. */}
+        <div className="md:hidden">
+          {data.items.length === 0 && (
+            <p className="mb-2 text-center text-sm text-zinc-500">Nothing here yet. Add the first option below.</p>
+          )}
+          {canEdit && !full && <AddRowsCards slug={slug} token={token} columns={data.columns} onAdded={refresh} />}
+        </div>
+        {canEdit && full && <p className="text-sm text-zinc-500">This room is full ({room.maxItems} options).</p>}
+      </div>
 
       {openItem && (
         <ItemPanel
@@ -375,52 +362,4 @@ function applyVote(item: Item, next: number): Item {
   if (next > 0) up += next;
   if (next < 0) down -= next;
   return { ...item, up, down, score: up - down, myVote: next };
-}
-
-function AddItemForm({ slug, token, onAdded }: { slug: string; token: string; onAdded: () => Promise<void> }) {
-  const [title, setTitle] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const added = await addItems(slug, token, [{ title }]);
-      if (added.length === 0) {
-        setError("That's already in the list.");
-        return;
-      }
-      setTitle("");
-      await onAdded();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't add that.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="space-y-1">
-      <div className="flex gap-2">
-        <label htmlFor="new-item" className="sr-only">
-          New option
-        </label>
-        <input
-          id="new-item"
-          className={inputClass}
-          placeholder="Add an option…"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={200}
-        />
-        <button type="submit" className={primaryButtonClass} disabled={busy || !title.trim()}>
-          Add
-        </button>
-      </div>
-      {error && <p className={errorClass}>{error}</p>}
-    </form>
-  );
 }
