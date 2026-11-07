@@ -22,6 +22,9 @@ const defaultsFor = (t: Template | undefined) =>
 export function CreateRoom() {
   const [choice, setChoice] = useState("");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  // Chosen name per template column (keyed by its default name), when
+  // switched to an alternative. Only affects this form.
+  const [renamed, setRenamed] = useState<Record<string, string>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -30,7 +33,9 @@ export function CreateRoom() {
   const [created, setCreated] = useState<Created | null>(null);
 
   const template = TEMPLATES.find((t) => t.id === choice);
-  const columns = (template?.columns ?? []).filter((c) => checked[c.name]);
+  const columns = (template?.columns ?? [])
+    .filter((c) => checked[c.name])
+    .map((c) => ({ name: renamed[c.name] ?? c.name, type: c.type }));
 
   function choose(id: string) {
     const next = TEMPLATES.find((t) => t.id === id);
@@ -38,6 +43,7 @@ export function CreateRoom() {
     if (!name.trim() || name === template?.roomName) setName(next?.roomName ?? "");
     setChoice(id);
     setChecked(defaultsFor(next));
+    setRenamed({});
     setShowAdvanced(false);
   }
 
@@ -46,11 +52,7 @@ export function CreateRoom() {
     setBusy(true);
     setError(null);
     try {
-      const res = await createRoom(
-        name,
-        displayName,
-        columns.map((c) => ({ name: c.name, type: c.type })),
-      );
+      const res = await createRoom(name, displayName, columns);
       saveSession(res.slug, { token: res.token, passcode: res.passcode, name: name.trim() });
       setCreated({ slug: res.slug, name: name.trim(), passcode: res.passcode });
     } catch (err) {
@@ -137,19 +139,51 @@ export function CreateRoom() {
                 Columns to compare ({columns.length})
               </legend>
               <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
-                {template.columns.map((c) => (
-                  <label key={c.name} className="flex items-center gap-2 text-sm">
+                {template.columns.map((c) => {
+                  const id = `col-${c.name.replace(/\W+/g, "-").toLowerCase()}`;
+                  const hint = typeHint[c.type] && <span className="text-xs text-zinc-500">{typeHint[c.type]}</span>;
+                  const toggle = (
                     <input
+                      id={id}
                       type="checkbox"
                       checked={!!checked[c.name]}
                       onChange={(e) => setChecked((ch) => ({ ...ch, [c.name]: e.target.checked }))}
                     />
-                    {c.name}
-                    {typeHint[c.type] && <span className="text-xs text-zinc-500">{typeHint[c.type]}</span>}
-                  </label>
-                ))}
+                  );
+                  if (c.alternatives.length === 0) {
+                    return (
+                      <label key={c.name} htmlFor={id} className="flex items-center gap-2 text-sm">
+                        {toggle}
+                        {c.name}
+                        {hint}
+                      </label>
+                    );
+                  }
+                  // The name is a dropdown of alternatives; it's outside the
+                  // checkbox's label so picking a name doesn't toggle it.
+                  return (
+                    <div key={c.name} className="flex items-center gap-2 text-sm">
+                      {toggle}
+                      <select
+                        aria-label={`Name for the ${c.name} column`}
+                        className="-ml-1 field-sizing-content min-w-0 cursor-pointer rounded border border-transparent bg-transparent py-0.5 pr-1 pl-1 text-sm hover:border-zinc-300 focus:border-zinc-400 focus:outline-none dark:hover:border-zinc-700"
+                        value={renamed[c.name] ?? c.name}
+                        onChange={(e) => setRenamed((r) => ({ ...r, [c.name]: e.target.value }))}
+                      >
+                        {[c.name, ...c.alternatives].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                      {hint}
+                    </div>
+                  );
+                })}
               </div>
-              <p className="mt-2 text-xs text-zinc-500">You can add, rename or remove columns later.</p>
+              <p className="mt-2 text-xs text-zinc-500">
+                Names with ▾ have alternatives. You can add, rename or remove columns later.
+              </p>
             </fieldset>
           )}
 
