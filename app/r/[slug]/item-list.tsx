@@ -66,13 +66,13 @@ export function ItemList({
   const active = effectiveSort(sort, columns);
 
   // Same track sizes for the header and every row so the "table" lines up.
-  // Votes and comments come first so they're always in view, even when
-  // columns scroll.
+  // Rank, votes and comments come first so they're always in view, even
+  // when columns scroll.
   const gridTemplateColumns = [
+    "2rem",
     voting.mode === "budget" && voting.allowDuplicates ? "8rem" : "7rem",
     "3.5rem",
     canDrag ? "2rem" : null,
-    "2rem",
     "minmax(12rem, 2fr)",
     ...columns.map((c) =>
       c.type === "boolean" ? "6rem" : c.type === "textarea" ? "minmax(12rem, 2fr)" : "minmax(8rem, 1fr)",
@@ -80,7 +80,7 @@ export function ItemList({
   ]
     .filter(Boolean)
     .join(" ");
-  // Columns before Option: votes, comments, drag handle (if any), #.
+  // Columns before Option: #, votes, comments, drag handle (if any).
   const lead = canDrag ? 4 : 3;
 
   function onDragEnd(e: DragEndEvent) {
@@ -111,10 +111,10 @@ export function ItemList({
                 className="grid items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium tracking-wide text-zinc-500 uppercase dark:border-zinc-800 dark:bg-zinc-900"
                 style={{ gridTemplateColumns }}
               >
+                <span role="columnheader">#</span>
                 <HeaderButton label="Votes" sortKey="score" active={active} onSort={onSort} />
                 <span role="columnheader" aria-label="Comments" />
                 {canDrag && <span role="columnheader" aria-label="Reorder" />}
-                <span role="columnheader">#</span>
                 <HeaderButton label="Option" sortKey="title" active={active} onSort={onSort} />
                 {columns.map((c) =>
                   isSortable(c) ? (
@@ -141,6 +141,9 @@ export function ItemList({
                       }`}
                       style={{ gridTemplateColumns }}
                     >
+                      <span role="cell" className="text-right text-sm text-zinc-400 tabular-nums">
+                        {i + 1}
+                      </span>
                       <div role="cell" className="flex gap-1">
                         <Votes item={item} voting={voting} />
                       </div>
@@ -148,9 +151,6 @@ export function ItemList({
                         <CommentButton item={item} onOpen={onOpen} />
                       </div>
                       {canDrag && handle}
-                      <span role="cell" className="text-right text-sm text-zinc-400 tabular-nums">
-                        {i + 1}
-                      </span>
                       <div role="cell" className="min-w-0">
                         <button
                           type="button"
@@ -365,9 +365,22 @@ function EditableField({
             start();
           }
         }}
-        className="-mx-1 min-h-7 cursor-text rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        title={`Edit ${column.name}`}
+        className="group -mx-1 flex min-h-7 cursor-text items-start gap-1 rounded border border-transparent px-1 py-0.5 hover:border-zinc-300 hover:bg-zinc-50 focus-visible:border-zinc-400 focus-visible:outline-none dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
       >
-        <FieldValue column={column} value={value} clamp />
+        <span className="min-w-0 flex-1">
+          {current === "" ? (
+            <span className="text-zinc-400 italic opacity-60 group-hover:opacity-100">Add</span>
+          ) : (
+            <FieldValue column={column} value={value} clamp />
+          )}
+        </span>
+        <span
+          aria-hidden
+          className="shrink-0 text-xs text-zinc-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+        >
+          ✎
+        </span>
       </div>
     );
   }
