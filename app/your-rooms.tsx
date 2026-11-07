@@ -9,7 +9,7 @@ export function YourRooms() {
   if (rooms.length === 0) return null;
 
   return (
-    <section className="mb-8">
+    <section>
       <h2 className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">Your rooms</h2>
       <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
         {rooms.map((r) => (

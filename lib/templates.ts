@@ -11,8 +11,8 @@ const col = (name: string, type: ColumnType, checked = true): TemplateColumn => 
 export const TEMPLATES: Template[] = [
   {
     id: "rentals",
-    label: "Rental houses",
-    roomName: "Rental houses",
+    label: "Rental homes",
+    roomName: "Rental homes",
     columns: [
       col("Link", "text"),
       col("Price per night", "text"),
