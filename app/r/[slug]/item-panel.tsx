@@ -30,6 +30,8 @@ type Props = {
   voting: Voting;
   // The room is locked in: show everything, change nothing.
   readOnly: boolean;
+  // Can change the option's title and values (admins, while unlocked).
+  canEditItem: boolean;
   onChanged: () => Promise<void>;
   onClose: () => void;
 };
@@ -42,14 +44,14 @@ export function ItemPanel(props: Props) {
         <div className="flex items-center gap-2">
           <Votes item={item} voting={props.voting} />
         </div>
-        {props.readOnly ? <ItemDetails {...props} /> : <ItemEditor {...props} />}
+        {props.canEditItem ? <ItemEditor {...props} /> : <ItemDetails {...props} />}
         <Comments {...props} />
       </div>
     </Panel>
   );
 }
 
-// Locked rooms: the item's values, not editable.
+// The item's values, read-only: for non-admins and in locked rooms.
 function ItemDetails({ item, columns }: Props) {
   if (columns.length === 0) return null;
   return (

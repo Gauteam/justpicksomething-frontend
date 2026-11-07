@@ -7,6 +7,7 @@ import {
   errorMessage,
   reorderItems,
   setVote,
+  updateItem,
   updateSettings,
   type Column,
   type Item,
@@ -17,7 +18,7 @@ import { updateSession, useRoomSession, type RoomSession } from "@/lib/session";
 import { useRoom } from "@/lib/use-room";
 import { ShareCard } from "@/components/share-card";
 import { errorClass, secondaryButtonClass } from "@/components/styles";
-import { AddRowsCards, AddRowsTable } from "./add-rows";
+import { AddButton, AddRowsCards, AddRowsTable, AddStatus, useNewRows } from "./add-rows";
 import { ColumnsPanel } from "./columns-panel";
 import { ItemList, type Voting } from "./item-list";
 import { ItemPanel } from "./item-panel";
@@ -93,6 +94,8 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
   const locked = room.lockedAt !== null;
   const canEdit = !locked;
   const full = room.maxItems !== null && data.items.length >= room.maxItems;
+  const adding = canEdit && !full;
+  const newRows = useNewRows({ slug, token, columns: data.columns, onAdded: refresh });
 
   const votesUsed = data.items.reduce((n, i) => n + Math.max(i.myVote, 0), 0);
   const voting: Voting = {
@@ -122,6 +125,30 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
       else await setVote(slug, token, item.id, room.voteMode, next);
     } catch (err) {
       setActionError(errorMessage(err, "Couldn't save your vote."));
+    }
+    await refresh();
+  }
+
+  // Saves a value edited in place in the table.
+  async function editField(item: Item, column: Column, value: string | boolean | null) {
+    setData(
+      (d) =>
+        d && {
+          ...d,
+          items: d.items.map((it) => {
+            if (it.id !== item.id) return it;
+            const fields = { ...it.fields };
+            if (value === null) delete fields[column.id];
+            else fields[column.id] = value;
+            return { ...it, fields };
+          }),
+        },
+    );
+    setActionError(null);
+    try {
+      await updateItem(slug, token, item.id, { fields: { [column.id]: value } });
+    } catch (err) {
+      setActionError(errorMessage(err, `Couldn't save ${column.name}.`));
     }
     await refresh();
   }
@@ -250,18 +277,17 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
           highlight={highlight}
           onOpen={(item) => setOpenItemId(item.id)}
           onReorder={reorder}
-          footer={
-            canEdit && !full
-              ? (grid) => <AddRowsTable slug={slug} token={token} columns={data.columns} onAdded={refresh} {...grid} />
-              : undefined
-          }
+          onEditField={isAdmin && canEdit ? editField : undefined}
+          footer={adding ? (grid) => <AddRowsTable s={newRows} columns={data.columns} {...grid} /> : undefined}
+          aside={adding ? <AddButton s={newRows} className="h-9 w-10" /> : undefined}
         />
+        {adding && <AddStatus s={newRows} className="hidden md:block" />}
         {/* Phones have cards instead of the table, so the input goes under them. */}
         <div className="md:hidden">
           {data.items.length === 0 && (
             <p className="mb-2 text-center text-sm text-zinc-500">Nothing here yet. Add the first option below.</p>
           )}
-          {canEdit && !full && <AddRowsCards slug={slug} token={token} columns={data.columns} onAdded={refresh} />}
+          {adding && <AddRowsCards s={newRows} columns={data.columns} />}
         </div>
         {canEdit && full && <p className="text-sm text-zinc-500">This room is full ({room.maxItems} options).</p>}
       </div>
@@ -278,6 +304,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
           roomUpdatedAt={room.updatedAt}
           voting={voting}
           readOnly={locked}
+          canEditItem={isAdmin && canEdit}
           onChanged={refresh}
           onClose={() => setOpenItemId(null)}
         />

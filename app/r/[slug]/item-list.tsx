@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef, useState } from "react";
+
 import {
   closestCenter,
   DndContext,
@@ -36,6 +38,10 @@ type Props = {
   // Rendered inside the table under the last row (the new-option input row),
   // given the table's track sizes and how many columns come before Option.
   footer?: (grid: { gridTemplateColumns: string; lead: number }) => React.ReactNode;
+  // Beside the table on its right, lined up with the bottom row (the + button).
+  aside?: React.ReactNode;
+  // Saves a value edited in place in the table; absent = read-only (locked).
+  onEditField?: (item: Item, column: Column, value: string | boolean | null) => Promise<void>;
 };
 
 export function ItemList({
@@ -50,6 +56,8 @@ export function ItemList({
   onOpen,
   onReorder,
   footer,
+  aside,
+  onEditField,
 }: Props) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -95,74 +103,85 @@ export function ItemList({
     <>
       {sortable(
         /* Desktop: comparison table */
-        <div className="hidden overflow-x-auto rounded-xl border border-zinc-200 md:block dark:border-zinc-800">
-          <div className="min-w-max" role="table" aria-label="Options">
-            <div
-              role="row"
-              className="grid items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium tracking-wide text-zinc-500 uppercase dark:border-zinc-800 dark:bg-zinc-900"
-              style={{ gridTemplateColumns }}
-            >
-              <HeaderButton label="Votes" sortKey="score" active={active} onSort={onSort} />
-              <span role="columnheader" aria-label="Comments" />
-              {canDrag && <span role="columnheader" aria-label="Reorder" />}
-              <span role="columnheader">#</span>
-              <HeaderButton label="Option" sortKey="title" active={active} onSort={onSort} />
-              {columns.map((c) =>
-                isSortable(c) ? (
-                  <HeaderButton key={c.id} label={c.name} sortKey={`col:${c.id}`} active={active} onSort={onSort} />
-                ) : (
-                  <span key={c.id} role="columnheader" className="truncate">
-                    {c.name}
-                  </span>
-                ),
-              )}
-            </div>
-            {items.length === 0 && (
-              <p className="px-3 py-6 text-center text-sm text-zinc-500">
-                Nothing here yet. Add the first option below.
-              </p>
-            )}
-            {items.map((item, i) => (
-              <SortableRow key={item.id} id={item.id} disabled={!canDrag}>
-                {(handle) => (
-                  <div
-                    role="row"
-                    className={`grid items-center gap-3 border-b border-zinc-100 px-3 py-2 last:border-b-0 dark:border-zinc-900 ${
-                      highlight.has(item.id) ? "bg-amber-50 dark:bg-amber-950/40" : "bg-white dark:bg-zinc-950"
-                    }`}
-                    style={{ gridTemplateColumns }}
-                  >
-                    <div role="cell" className="flex gap-1">
-                      <Votes item={item} voting={voting} />
-                    </div>
-                    <div role="cell">
-                      <CommentButton item={item} onOpen={onOpen} />
-                    </div>
-                    {canDrag && handle}
-                    <span role="cell" className="text-right text-sm text-zinc-400 tabular-nums">
-                      {i + 1}
+        <div className="hidden items-end gap-3 md:flex">
+          <div className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+            <div className="min-w-max" role="table" aria-label="Options">
+              <div
+                role="row"
+                className="grid items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium tracking-wide text-zinc-500 uppercase dark:border-zinc-800 dark:bg-zinc-900"
+                style={{ gridTemplateColumns }}
+              >
+                <HeaderButton label="Votes" sortKey="score" active={active} onSort={onSort} />
+                <span role="columnheader" aria-label="Comments" />
+                {canDrag && <span role="columnheader" aria-label="Reorder" />}
+                <span role="columnheader">#</span>
+                <HeaderButton label="Option" sortKey="title" active={active} onSort={onSort} />
+                {columns.map((c) =>
+                  isSortable(c) ? (
+                    <HeaderButton key={c.id} label={c.name} sortKey={`col:${c.id}`} active={active} onSort={onSort} />
+                  ) : (
+                    <span key={c.id} role="columnheader" className="truncate">
+                      {c.name}
                     </span>
-                    <div role="cell" className="min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => onOpen(item)}
-                        className="text-left font-medium break-words hover:underline"
-                      >
-                        {item.title}
-                      </button>
-                      <p className="text-xs text-zinc-500">{addedBy(item, names)}</p>
-                    </div>
-                    {columns.map((c) => (
-                      <div role="cell" key={c.id} className="min-w-0 text-sm">
-                        <FieldValue column={c} value={item.fields[c.id]} clamp />
-                      </div>
-                    ))}
-                  </div>
+                  ),
                 )}
-              </SortableRow>
-            ))}
-            {footer?.({ gridTemplateColumns, lead })}
+              </div>
+              {items.length === 0 && (
+                <p className="px-3 py-6 text-center text-sm text-zinc-500">
+                  Nothing here yet. Add the first option below.
+                </p>
+              )}
+              {items.map((item, i) => (
+                <SortableRow key={item.id} id={item.id} disabled={!canDrag}>
+                  {(handle) => (
+                    <div
+                      role="row"
+                      className={`grid items-center gap-3 border-b border-zinc-100 px-3 py-2 last:border-b-0 dark:border-zinc-900 ${
+                        highlight.has(item.id) ? "bg-amber-50 dark:bg-amber-950/40" : "bg-white dark:bg-zinc-950"
+                      }`}
+                      style={{ gridTemplateColumns }}
+                    >
+                      <div role="cell" className="flex gap-1">
+                        <Votes item={item} voting={voting} />
+                      </div>
+                      <div role="cell">
+                        <CommentButton item={item} onOpen={onOpen} />
+                      </div>
+                      {canDrag && handle}
+                      <span role="cell" className="text-right text-sm text-zinc-400 tabular-nums">
+                        {i + 1}
+                      </span>
+                      <div role="cell" className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => onOpen(item)}
+                          className="text-left font-medium break-words hover:underline"
+                        >
+                          {item.title}
+                        </button>
+                        <p className="text-xs text-zinc-500">{addedBy(item, names)}</p>
+                      </div>
+                      {columns.map((c) => (
+                        <div role="cell" key={c.id} className="min-w-0 text-sm">
+                          {onEditField ? (
+                            <EditableField
+                              column={c}
+                              value={item.fields[c.id]}
+                              onSave={(v) => onEditField(item, c, v)}
+                            />
+                          ) : (
+                            <FieldValue column={c} value={item.fields[c.id]} clamp />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </SortableRow>
+              ))}
+              {footer?.({ gridTemplateColumns, lead })}
+            </div>
           </div>
+          {aside && <div className="mb-2 shrink-0">{aside}</div>}
         </div>,
       )}
 
@@ -201,7 +220,10 @@ export function ItemList({
                           <div key={c.id} className="flex gap-2">
                             <dt className="shrink-0 text-zinc-500">{c.name}:</dt>
                             <dd className="min-w-0">
-                              <FieldValue column={c} value={item.fields[c.id]} clamp />
+                              {/* Tapping a value opens the item's editor. */}
+                              <button type="button" onClick={() => onOpen(item)} className="text-left">
+                                <FieldValue column={c} value={item.fields[c.id]} clamp />
+                              </button>
                             </dd>
                           </div>
                         ))}
@@ -285,6 +307,121 @@ function HeaderButton({
         {arrow}
       </button>
     </span>
+  );
+}
+
+const editClass =
+  "w-full min-w-0 rounded-md border border-zinc-400 bg-white px-2 py-1 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-300";
+
+// A table cell value you can click to edit in place. Text saves on Enter or
+// when you click away (Escape cancels); long text saves on Ctrl/Cmd+Enter or
+// click-away; yes/no saves as soon as you pick.
+function EditableField({
+  column,
+  value,
+  onSave,
+}: {
+  column: Column;
+  value: string | boolean | undefined;
+  onSave: (value: string | boolean | null) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  // Enter commits and unmounts the input, which can also fire blur; only the
+  // first close counts.
+  const closed = useRef(false);
+  const current = value === undefined ? "" : column.type === "boolean" ? (value ? "yes" : "no") : String(value);
+
+  function start() {
+    closed.current = false;
+    setDraft(current);
+    setEditing(true);
+  }
+
+  function cancel() {
+    closed.current = true;
+    setEditing(false);
+  }
+
+  function commit(next: string) {
+    if (closed.current) return;
+    closed.current = true;
+    setEditing(false);
+    if (next.trim() === current) return;
+    const v = next.trim();
+    onSave(v === "" ? null : column.type === "boolean" ? v === "yes" : v);
+  }
+
+  if (!editing) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Edit ${column.name}`}
+        onClick={start}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            start();
+          }
+        }}
+        className="-mx-1 min-h-7 cursor-text rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+      >
+        <FieldValue column={column} value={value} clamp />
+      </div>
+    );
+  }
+
+  if (column.type === "boolean") {
+    return (
+      <select
+        ref={(el) => el?.focus()}
+        aria-label={column.name}
+        className={editClass}
+        value={draft}
+        onChange={(e) => commit(e.target.value)}
+        onBlur={cancel}
+        onKeyDown={(e) => e.key === "Escape" && cancel()}
+      >
+        <option value="">—</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    );
+  }
+
+  if (column.type === "textarea") {
+    return (
+      <textarea
+        ref={(el) => el?.focus()}
+        aria-label={column.name}
+        className={`${editClass} min-h-16`}
+        value={draft}
+        maxLength={2000}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => commit(draft)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") cancel();
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) commit(draft);
+        }}
+      />
+    );
+  }
+
+  return (
+    <input
+      ref={(el) => el?.focus()}
+      aria-label={column.name}
+      className={editClass}
+      value={draft}
+      maxLength={200}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => commit(draft)}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") cancel();
+        if (e.key === "Enter" && !e.nativeEvent.isComposing) commit(draft);
+      }}
+    />
   );
 }
 

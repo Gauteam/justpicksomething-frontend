@@ -193,7 +193,7 @@ export async function reorderColumns(slug: string, token: string, ids: string[])
 
 export async function listComments(slug: string, token: string, itemId: string): Promise<Comment[]> {
   const res = await request(`${roomPath(slug)}/items/${itemId}/comments`, { token });
-  return ((await res.json()) as { comments: Comment[] }).comments;
+  return ((await res.json()) as { comments?: Comment[] }).comments ?? [];
 }
 
 export async function addComment(slug: string, token: string, itemId: string, body: string): Promise<Comment> {

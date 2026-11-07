@@ -25,22 +25,30 @@ function parseBoolean(s: string): string {
   return "";
 }
 
-type Props = {
+export type NewRows = ReturnType<typeof useNewRows>;
+
+// State for the new-option row(s), shared by the table row, the + button
+// beside the table and the phone card. Starts as one row; pasting rows copied
+// from a spreadsheet (tab-separated, one per line) fills cells from where you
+// paste and adds rows as needed. Submitting adds every row with a title.
+export function useNewRows({
+  slug,
+  token,
+  columns,
+  onAdded,
+}: {
   slug: string;
   token: string;
   columns: Column[];
   onAdded: () => Promise<void>;
-};
-
-// State for the new-option row(s). Starts as one row; pasting rows copied from
-// a spreadsheet (tab-separated, one per line) fills cells from where you paste
-// and adds rows as needed. Submitting adds every row with a title.
-function useNewRows({ slug, token, columns, onAdded }: Props) {
+}) {
   const [rows, setRows] = useState<Row[]>(() => [blankRow()]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const firstInput = useRef<HTMLInputElement>(null);
+  // The first title input on desktop and on phones; focus goes back to
+  // whichever is visible after adding.
+  const firstInputs = useRef<(HTMLInputElement | null)[]>([]);
 
   const filled = rows.filter((r) => r.title.trim());
   // Cell positions: 0 is the title, then one per column.
@@ -87,8 +95,7 @@ function useNewRows({ slug, token, columns, onAdded }: Props) {
     setRows((rs) => (rs.length === 1 ? [blankRow()] : rs.filter((_, i) => i !== index)));
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit() {
     if (filled.length === 0 || busy) return;
     const items: NewItem[] = filled.map((r) => {
       const fields: Record<string, string | boolean> = {};
@@ -114,7 +121,7 @@ function useNewRows({ slug, token, columns, onAdded }: Props) {
       }
       setRows([blankRow()]);
       await onAdded();
-      firstInput.current?.focus();
+      firstInputs.current.find((el) => el && el.offsetParent !== null)?.focus();
     } catch (err) {
       setError(errorMessage(err, "Couldn't add that."));
     } finally {
@@ -122,27 +129,44 @@ function useNewRows({ slug, token, columns, onAdded }: Props) {
     }
   }
 
-  const submitLabel = busy ? "Adding…" : filled.length > 1 ? `Add ${filled.length}` : "Add";
+  // Enter in any input adds (Escape-free, IME-safe).
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      submit();
+    }
+  }
 
-  return { rows, filled, busy, message, error, firstInput, setCell, onPaste, removeRow, onSubmit, submitLabel };
+  // Ref setter for the first title input in each layout (0 desktop, 1 phone).
+  const firstInputRef = (slot: number) => (el: HTMLInputElement | null) => {
+    firstInputs.current[slot] = el;
+  };
+
+  return { rows, filled, busy, message, error, firstInputRef, setCell, onPaste, onKeyDown, removeRow, submit };
 }
 
 function CellInput({
+  s,
   column,
-  value,
+  rowIndex,
+  colIndex,
   label,
-  onChange,
-  onPaste,
 }: {
+  s: NewRows;
   column: Column;
-  value: string;
+  rowIndex: number;
+  colIndex: number;
   label: string;
-  onChange: (v: string) => void;
-  onPaste: (e: React.ClipboardEvent) => void;
 }) {
+  const value = s.rows[rowIndex].fields[column.id] ?? "";
   if (column.type === "boolean") {
     return (
-      <select aria-label={label} className={cellClass} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        aria-label={label}
+        className={cellClass}
+        value={value}
+        onChange={(e) => s.setCell(rowIndex, column.id, e.target.value)}
+      >
         <option value="">—</option>
         <option value="yes">Yes</option>
         <option value="no">No</option>
@@ -155,102 +179,116 @@ function CellInput({
       className={cellClass}
       value={value}
       maxLength={column.type === "textarea" ? 2000 : 200}
-      onChange={(e) => onChange(e.target.value)}
-      onPaste={onPaste}
+      onChange={(e) => s.setCell(rowIndex, column.id, e.target.value)}
+      onPaste={(e) => s.onPaste(e, rowIndex, colIndex)}
+      onKeyDown={s.onKeyDown}
     />
   );
 }
 
-// Input row(s) at the bottom of the comparison table, lined up with its
-// columns. `lead` is how many table columns come before Option; the Add
-// button sits there.
-export function AddRowsTable(props: Props & { gridTemplateColumns: string; lead: number }) {
-  const { columns, gridTemplateColumns, lead } = props;
-  const s = useNewRows(props);
-  const span = { gridColumn: `span ${lead} / span ${lead}` };
-
+function TitleInput({ s, rowIndex, slot }: { s: NewRows; rowIndex: number; slot: number }) {
   return (
-    <form onSubmit={s.onSubmit} role="rowgroup" aria-label="New option" className="bg-zinc-50 dark:bg-zinc-900/60">
-      {s.rows.map((row, ri) => (
+    <input
+      ref={rowIndex === 0 ? s.firstInputRef(slot) : undefined}
+      aria-label={`New option${s.rows.length > 1 ? `, row ${rowIndex + 1}` : ""}`}
+      placeholder={rowIndex === 0 ? "Add an option…" : undefined}
+      className={cellClass}
+      value={s.rows[rowIndex].title}
+      maxLength={200}
+      onChange={(e) => s.setCell(rowIndex, "title", e.target.value)}
+      onPaste={(e) => s.onPaste(e, rowIndex, 0)}
+      onKeyDown={s.onKeyDown}
+    />
+  );
+}
+
+const rowLabel = (s: NewRows, ri: number, name: string) => `${name}${s.rows.length > 1 ? `, row ${ri + 1}` : ""}`;
+
+// Input row(s) at the bottom of the comparison table, lined up with its
+// columns. `lead` is how many table columns come before Option.
+export function AddRowsTable({
+  s,
+  columns,
+  gridTemplateColumns,
+  lead,
+}: {
+  s: NewRows;
+  columns: Column[];
+  gridTemplateColumns: string;
+  lead: number;
+}) {
+  const span = { gridColumn: `span ${lead} / span ${lead}` };
+  return (
+    <div role="rowgroup" aria-label="New option" className="bg-zinc-50 dark:bg-zinc-900/60">
+      {s.rows.map((_, ri) => (
         <div
           key={ri}
           role="row"
           className="grid items-center gap-3 border-t border-zinc-200 px-3 py-2 dark:border-zinc-800"
           style={{ gridTemplateColumns }}
         >
-          <div role="cell" style={span}>
-            {ri === 0 ? (
-              <button
-                type="submit"
-                className={`${primaryButtonClass} w-full py-1.5`}
-                disabled={s.busy || !s.filled.length}
-              >
-                {s.submitLabel}
-              </button>
-            ) : (
+          <div role="cell" style={span} className="text-right">
+            {ri > 0 && (
               <button
                 type="button"
                 aria-label={`Remove row ${ri + 1}`}
                 onClick={() => s.removeRow(ri)}
-                className="w-full rounded px-1 py-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
+                className="rounded px-2 py-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
               >
                 ×
               </button>
             )}
           </div>
           <div role="cell">
-            <input
-              ref={ri === 0 ? s.firstInput : undefined}
-              aria-label={`New option${s.rows.length > 1 ? `, row ${ri + 1}` : ""}`}
-              placeholder={ri === 0 ? "Add an option…" : undefined}
-              className={cellClass}
-              value={row.title}
-              maxLength={200}
-              onChange={(e) => s.setCell(ri, "title", e.target.value)}
-              onPaste={(e) => s.onPaste(e, ri, 0)}
-            />
+            <TitleInput s={s} rowIndex={ri} slot={0} />
           </div>
           {columns.map((c, ci) => (
             <div role="cell" key={c.id}>
-              <CellInput
-                column={c}
-                label={`${c.name}${s.rows.length > 1 ? `, row ${ri + 1}` : ""}`}
-                value={row.fields[c.id] ?? ""}
-                onChange={(v) => s.setCell(ri, c.id, v)}
-                onPaste={(e) => s.onPaste(e, ri, ci + 1)}
-              />
+              <CellInput s={s} column={c} rowIndex={ri} colIndex={ci + 1} label={rowLabel(s, ri, c.name)} />
             </div>
           ))}
-          <div role="cell" />
         </div>
       ))}
-      <div className="px-3 pb-2 text-xs text-zinc-500" style={{ gridColumn: "1 / -1" }}>
-        {s.error ? <span className={errorClass}>{s.error}</span> : (s.message ?? HELP)}
-      </div>
-    </form>
+    </div>
   );
 }
 
-// Phone version: the same inputs as a card under the option cards.
-export function AddRowsCards(props: Props) {
-  const { columns } = props;
-  const s = useNewRows(props);
-
+// The + button that adds the typed row(s).
+export function AddButton({ s, className = "" }: { s: NewRows; className?: string }) {
+  const n = s.filled.length;
   return (
-    <form onSubmit={s.onSubmit} aria-label="New option" className="space-y-2">
-      {s.rows.map((row, ri) => (
+    <button
+      type="button"
+      onClick={s.submit}
+      disabled={s.busy || n === 0}
+      aria-label={n > 1 ? `Add ${n} options` : "Add option"}
+      title={n > 1 ? `Add ${n} options` : "Add option"}
+      className={`${primaryButtonClass} gap-1 px-3 text-lg leading-none ${className}`}
+    >
+      <span aria-hidden>+</span>
+      {n > 1 && <span className="text-sm tabular-nums">{n}</span>}
+    </button>
+  );
+}
+
+// Help text, or what happened on the last add.
+export function AddStatus({ s, className = "" }: { s: NewRows; className?: string }) {
+  return (
+    <p className={`text-xs text-zinc-500 ${className}`} aria-live="polite">
+      {s.error ? <span className={errorClass}>{s.error}</span> : (s.message ?? HELP)}
+    </p>
+  );
+}
+
+// Phone version: the same inputs as a card under the option cards, with the
+// + button underneath.
+export function AddRowsCards({ s, columns }: { s: NewRows; columns: Column[] }) {
+  return (
+    <div aria-label="New option" className="space-y-2">
+      {s.rows.map((_, ri) => (
         <div key={ri} className="space-y-2 rounded-xl border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
           <div className="flex gap-2">
-            <input
-              ref={ri === 0 ? s.firstInput : undefined}
-              aria-label={`New option${s.rows.length > 1 ? `, row ${ri + 1}` : ""}`}
-              placeholder="Add an option…"
-              className={cellClass}
-              value={row.title}
-              maxLength={200}
-              onChange={(e) => s.setCell(ri, "title", e.target.value)}
-              onPaste={(e) => s.onPaste(e, ri, 0)}
-            />
+            <TitleInput s={s} rowIndex={ri} slot={1} />
             {s.rows.length > 1 && (
               <button
                 type="button"
@@ -267,27 +305,15 @@ export function AddRowsCards(props: Props) {
               {columns.map((c, ci) => (
                 <label key={c.id} className="block min-w-0">
                   <span className={`${labelClass} text-xs`}>{c.name}</span>
-                  <CellInput
-                    column={c}
-                    label={`${c.name}${s.rows.length > 1 ? `, row ${ri + 1}` : ""}`}
-                    value={row.fields[c.id] ?? ""}
-                    onChange={(v) => s.setCell(ri, c.id, v)}
-                    onPaste={(e) => s.onPaste(e, ri, ci + 1)}
-                  />
+                  <CellInput s={s} column={c} rowIndex={ri} colIndex={ci + 1} label={rowLabel(s, ri, c.name)} />
                 </label>
               ))}
             </div>
           )}
         </div>
       ))}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-zinc-500">
-          {s.error ? <span className={errorClass}>{s.error}</span> : (s.message ?? HELP)}
-        </p>
-        <button type="submit" className={`${primaryButtonClass} shrink-0`} disabled={s.busy || !s.filled.length}>
-          {s.submitLabel}
-        </button>
-      </div>
-    </form>
+      <AddButton s={s} className="w-full py-2" />
+      <AddStatus s={s} />
+    </div>
   );
 }
