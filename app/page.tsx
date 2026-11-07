@@ -1,4 +1,5 @@
-import { CreateRoom } from "./create-room";
+import { HomeTabs } from "./home-tabs";
+import { YourRooms } from "./your-rooms";
 
 export default function Home() {
   return (
@@ -7,7 +8,8 @@ export default function Home() {
       <p className="mt-2 mb-8 text-zinc-600 dark:text-zinc-400">
         Make a room, drop in options, vote, and stop arguing about it.
       </p>
-      <CreateRoom />
+      <YourRooms />
+      <HomeTabs />
     </main>
   );
 }

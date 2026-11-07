@@ -38,6 +38,9 @@ export type Room = {
   votesPerMember: number;
   allowDuplicateVotes: boolean;
   lockedAt: string | null;
+  // Every member can do admin things.
+  everyoneAdmin: boolean;
+  passcodeChangedAt: string;
 };
 
 export type RoomData = {
@@ -90,10 +93,15 @@ async function request(path: string, init: RequestInit & { token?: string } = {}
   return res;
 }
 
-export async function createRoom(name: string, displayName: string) {
+// Creates a room; `columns` (e.g. from a template) are created with it.
+export async function createRoom(
+  name: string,
+  displayName: string,
+  columns: { name: string; type: ColumnType }[] = [],
+) {
   const res = await request("/rooms", {
     method: "POST",
-    body: JSON.stringify({ name, displayName }),
+    body: JSON.stringify({ name, displayName, columns }),
   });
   return (await res.json()) as { slug: string; passcode: string; token: string };
 }
@@ -208,10 +216,26 @@ export async function deleteComment(slug: string, token: string, commentId: stri
 export const errorMessage = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
 
 export type SettingsPatch = Partial<
-  Pick<Room, "name" | "maxItems" | "voteMode" | "votesPerMember" | "allowDuplicateVotes">
+  Pick<Room, "name" | "maxItems" | "voteMode" | "votesPerMember" | "allowDuplicateVotes" | "everyoneAdmin">
 > & { locked?: boolean };
 
 // Admin only. While locked, only { locked: false } is accepted.
 export async function updateSettings(slug: string, token: string, patch: SettingsPatch) {
   await request(roomPath(slug), { method: "PATCH", token, body: JSON.stringify(patch) });
+}
+
+// Admin only. Demoting the last admin is refused.
+export async function setMemberAdmin(slug: string, token: string, memberId: string, isAdmin: boolean) {
+  await request(`${roomPath(slug)}/members/${memberId}`, { method: "PATCH", token, body: JSON.stringify({ isAdmin }) });
+}
+
+// Admin only. Revokes their access and deletes their votes and comments.
+export async function removeMember(slug: string, token: string, memberId: string) {
+  await request(`${roomPath(slug)}/members/${memberId}`, { method: "DELETE", token });
+}
+
+// Admin only. Returns the new passcode (shown once); members stay joined.
+export async function resetPasscode(slug: string, token: string) {
+  const res = await request(`${roomPath(slug)}/passcode`, { method: "POST", token });
+  return (await res.json()) as { passcode: string; passcodeChangedAt: string };
 }

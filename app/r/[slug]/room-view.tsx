@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   addItems,
   ApiError,
@@ -15,7 +15,7 @@ import {
   type RoomData,
 } from "@/lib/api";
 import { effectiveSort, isSortable, loadSort, nextSort, saveSort, sortItems, type Sort } from "@/lib/sort";
-import { useRoomSession } from "@/lib/session";
+import { updateSession, useRoomSession, type RoomSession } from "@/lib/session";
 import { useRoom } from "@/lib/use-room";
 import { ShareCard } from "@/components/share-card";
 import { errorClass, inputClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
@@ -24,6 +24,7 @@ import { ColumnsPanel } from "./columns-panel";
 import { ItemList, type Voting } from "./item-list";
 import { ItemPanel } from "./item-panel";
 import { JoinForm } from "./join-form";
+import { MembersPanel } from "./members-panel";
 import { SettingsPanel } from "./settings-panel";
 
 export function RoomView({ slug }: { slug: string }) {
@@ -38,7 +39,7 @@ export function RoomView({ slug }: { slug: string }) {
     <Room
       slug={slug}
       token={session.token}
-      passcode={session.passcode}
+      session={session}
       data={data}
       setData={setData}
       error={error}
@@ -54,22 +55,38 @@ export function Loading() {
 type RoomProps = {
   slug: string;
   token: string;
-  passcode?: string;
+  session: RoomSession;
   data: RoomData;
   setData: React.Dispatch<React.SetStateAction<RoomData | null>>;
   error: string | null;
   refresh: () => Promise<void>;
 };
 
-function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProps) {
+function Room({ slug, token, session, data, setData, error, refresh }: RoomProps) {
   const [showInvite, setShowInvite] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>(() => loadSort(slug));
   const [actionError, setActionError] = useState<string | null>(null);
 
   const { room } = data;
+
+  // Remember the room for "Your rooms", and which passcode version the saved
+  // passcode belongs to (first load after joining or creating).
+  const knownPasscodeAt = session.passcodeChangedAt;
+  useEffect(() => {
+    updateSession(slug, {
+      name: room.name,
+      lastOpened: Date.now(),
+      ...(knownPasscodeAt ? {} : { passcodeChangedAt: room.passcodeChangedAt }),
+    });
+  }, [slug, room.name, room.passcodeChangedAt, knownPasscodeAt]);
+  // An admin changed the passcode since this device saved it.
+  const passcodeStale =
+    knownPasscodeAt !== undefined && Date.parse(knownPasscodeAt) !== Date.parse(room.passcodeChangedAt);
+  const passcode = passcodeStale ? undefined : session.passcode;
   const names = new Map(data.members.map((m) => [m.id, m.displayName]));
   const active = effectiveSort(sort, data.columns);
   const items = sortItems(data.items, data.columns, active);
@@ -163,11 +180,26 @@ function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProp
             </button>
           </div>
         </div>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <button
+          type="button"
+          onClick={() => setShowMembers(true)}
+          className="text-left text-sm text-zinc-600 hover:underline dark:text-zinc-400"
+        >
           {data.members.length} {data.members.length === 1 ? "person" : "people"}:{" "}
           {data.members.map((m) => (m.id === data.me.id ? `${m.displayName} (you)` : m.displayName)).join(", ")}
-        </p>
-        {showInvite && <ShareCard slug={slug} roomName={room.name} passcode={passcode} />}
+        </button>
+        {showInvite && (
+          <div className="space-y-2">
+            <ShareCard slug={slug} roomName={room.name} passcode={passcode} />
+            {!passcode && (
+              <p className="text-sm text-zinc-500">
+                {passcodeStale
+                  ? "The passcode was changed. Ask an admin for the new one."
+                  : "Send the passcode along with the link."}
+              </p>
+            )}
+          </div>
+        )}
       </header>
 
       {locked && (
@@ -270,6 +302,17 @@ function Room({ slug, token, passcode, data, setData, error, refresh }: RoomProp
           columns={data.columns}
           onChanged={refresh}
           onClose={() => setShowColumns(false)}
+        />
+      )}
+      {showMembers && (
+        <MembersPanel
+          slug={slug}
+          token={token}
+          room={room}
+          members={data.members}
+          me={data.me}
+          onChanged={refresh}
+          onClose={() => setShowMembers(false)}
         />
       )}
       {showSettings && isAdmin && !locked && (

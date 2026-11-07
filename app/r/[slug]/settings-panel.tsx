@@ -20,6 +20,7 @@ export function SettingsPanel({ slug, token, room, onChanged, onClose }: Props) 
   const [voteMode, setVoteMode] = useState<VoteMode>(room.voteMode);
   const [votesPerMember, setVotesPerMember] = useState(room.votesPerMember.toString());
   const [allowDuplicates, setAllowDuplicates] = useState(room.allowDuplicateVotes);
+  const [everyoneAdmin, setEveryoneAdmin] = useState(room.everyoneAdmin);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +33,7 @@ export function SettingsPanel({ slug, token, room, onChanged, onClose }: Props) 
     if (Number(votesPerMember) !== room.votesPerMember) patch.votesPerMember = Number(votesPerMember);
     if (allowDuplicates !== room.allowDuplicateVotes) patch.allowDuplicateVotes = allowDuplicates;
   }
+  if (everyoneAdmin !== room.everyoneAdmin) patch.everyoneAdmin = everyoneAdmin;
   const dirty = Object.keys(patch).length > 0;
   const invalid =
     !name.trim() ||
@@ -148,6 +150,21 @@ export function SettingsPanel({ slug, token, room, onChanged, onClose }: Props) 
             </label>
           </div>
         )}
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={everyoneAdmin}
+            onChange={(e) => setEveryoneAdmin(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Everyone is an admin</span>
+            <span className="block text-zinc-500">
+              Anyone in the room, including people who join later, can change settings, columns and members.
+            </span>
+          </span>
+        </label>
 
         {patch.voteMode && (
           <p className="text-sm text-amber-700 dark:text-amber-400">Changing the voting style clears all votes.</p>
