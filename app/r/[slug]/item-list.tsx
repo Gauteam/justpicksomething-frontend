@@ -54,14 +54,15 @@ export function ItemList({
   const active = effectiveSort(sort, columns);
 
   // Same track sizes for the header and every row so the "table" lines up.
+  // Votes come first so they're always in view, even when columns scroll.
   const gridTemplateColumns = [
+    voting.mode === "budget" && voting.allowDuplicates ? "8rem" : "7rem",
     canDrag ? "2rem" : null,
     "2rem",
     "minmax(12rem, 2fr)",
     ...columns.map((c) =>
       c.type === "boolean" ? "6rem" : c.type === "textarea" ? "minmax(12rem, 2fr)" : "minmax(8rem, 1fr)",
     ),
-    voting.mode === "budget" && voting.allowDuplicates ? "8rem" : "7rem",
     "3.5rem",
   ]
     .filter(Boolean)
@@ -94,6 +95,7 @@ export function ItemList({
               className="grid items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium tracking-wide text-zinc-500 uppercase dark:border-zinc-800 dark:bg-zinc-900"
               style={{ gridTemplateColumns }}
             >
+              <HeaderButton label="Votes" sortKey="score" active={active} onSort={onSort} />
               {canDrag && <span role="columnheader" aria-label="Reorder" />}
               <span role="columnheader">#</span>
               <HeaderButton label="Option" sortKey="title" active={active} onSort={onSort} />
@@ -106,7 +108,6 @@ export function ItemList({
                   </span>
                 ),
               )}
-              <HeaderButton label="Votes" sortKey="score" active={active} onSort={onSort} />
               <span role="columnheader" aria-label="Comments" />
             </div>
             {items.map((item, i) => (
@@ -119,6 +120,9 @@ export function ItemList({
                     }`}
                     style={{ gridTemplateColumns }}
                   >
+                    <div role="cell" className="flex gap-1">
+                      <Votes item={item} voting={voting} />
+                    </div>
                     {canDrag && handle}
                     <span role="cell" className="text-right text-sm text-zinc-400 tabular-nums">
                       {i + 1}
@@ -138,9 +142,6 @@ export function ItemList({
                         <FieldValue column={c} value={item.fields[c.id]} clamp />
                       </div>
                     ))}
-                    <div role="cell" className="flex gap-1">
-                      <Votes item={item} voting={voting} />
-                    </div>
                     <div role="cell">
                       <CommentButton item={item} onOpen={onOpen} />
                     </div>

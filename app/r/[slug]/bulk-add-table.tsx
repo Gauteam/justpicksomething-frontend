@@ -5,7 +5,7 @@ import { addItems, errorMessage, type Column, type NewItem } from "@/lib/api";
 import { errorClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
 
 const MAX_ROWS = 50;
-const START_ROWS = 3;
+const START_ROWS = 1;
 
 // One row being typed: the option's title plus a raw string per column
 // (booleans as "" / "yes" / "no").
@@ -24,7 +24,8 @@ function parseBoolean(s: string): string {
   return "";
 }
 
-// Add several options at once, in a table with the room's columns. Pasting
+// Add several options at once, in a table with the room's columns, collapsed
+// until opened. Pasting
 // rows copied from a spreadsheet (tab-separated, one per line) fills cells
 // starting where you paste and adds rows as needed.
 export function BulkAddTable({
@@ -38,6 +39,7 @@ export function BulkAddTable({
   columns: Column[];
   onAdded: () => Promise<void>;
 }) {
+  const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Row[]>(() => blankRows(START_ROWS));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -124,100 +126,115 @@ export function BulkAddTable({
 
   return (
     <form onSubmit={onSubmit} className="space-y-3 border-t border-zinc-200 pt-6 dark:border-zinc-800">
-      <div>
-        <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Add several at once</h2>
-        <p className="text-xs text-zinc-500">Fill in rows, or paste rows copied from a spreadsheet.</p>
-      </div>
-      <div className="overflow-x-auto">
-        <div className="min-w-max space-y-1.5 md:min-w-0" role="table" aria-label="New options">
-          <div
-            role="row"
-            className="grid gap-2 px-0.5 text-xs font-medium tracking-wide text-zinc-500 uppercase"
-            style={{ gridTemplateColumns }}
-          >
-            <span role="columnheader">Option</span>
-            {columns.map((c) => (
-              <span role="columnheader" key={c.id} className="truncate">
-                {c.name}
-              </span>
-            ))}
-            <span role="columnheader" aria-label="Remove" />
-          </div>
-          {rows.map((row, ri) => (
-            <div role="row" key={ri} className="grid items-start gap-2 px-0.5" style={{ gridTemplateColumns }}>
-              <input
-                role="cell"
-                aria-label={`Option, row ${ri + 1}`}
-                className={cellClass}
-                value={row.title}
-                maxLength={200}
-                onChange={(e) => setCell(ri, "title", e.target.value)}
-                onPaste={(e) => onPaste(e, ri, 0)}
-              />
-              {columns.map((c, ci) => {
-                const label = `${c.name}, row ${ri + 1}`;
-                const value = row.fields[c.id] ?? "";
-                if (c.type === "boolean") {
-                  return (
-                    <select
-                      role="cell"
-                      key={c.id}
-                      aria-label={label}
-                      className={cellClass}
-                      value={value}
-                      onChange={(e) => setCell(ri, c.id, e.target.value)}
-                    >
-                      <option value="">—</option>
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  );
-                }
-                return (
-                  <input
-                    role="cell"
-                    key={c.id}
-                    aria-label={label}
-                    className={cellClass}
-                    value={value}
-                    maxLength={c.type === "textarea" ? 2000 : 200}
-                    onChange={(e) => setCell(ri, c.id, e.target.value)}
-                    onPaste={(e) => onPaste(e, ri, ci + 1)}
-                  />
-                );
-              })}
-              <button
-                type="button"
-                aria-label={`Remove row ${ri + 1}`}
-                className="rounded px-1 py-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-30 dark:hover:bg-zinc-800"
-                disabled={rows.length === 1}
-                onClick={() => setRows((rs) => rs.filter((_, i) => i !== ri))}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2>
         <button
           type="button"
-          className={secondaryButtonClass}
-          disabled={rows.length >= MAX_ROWS}
-          onClick={() => setRows((rs) => [...rs, ...blankRows(1)])}
+          aria-expanded={open}
+          aria-controls="bulk-add"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2 text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
         >
-          + Add row
+          <span aria-hidden className={`inline-block transition-transform ${open ? "rotate-90" : ""}`}>
+            ▸
+          </span>
+          Add several at once
         </button>
-        <button type="submit" className={primaryButtonClass} disabled={busy || filled.length === 0}>
-          {busy
-            ? "Adding…"
-            : filled.length > 0
-              ? `Add ${filled.length} ${filled.length === 1 ? "option" : "options"}`
-              : "Add options"}
-        </button>
-      </div>
-      {message && <p className="text-sm text-zinc-600 dark:text-zinc-400">{message}</p>}
-      {error && <p className={errorClass}>{error}</p>}
+      </h2>
+      {open && (
+        <div id="bulk-add" className="space-y-3">
+          <p className="text-xs text-zinc-500">Fill in rows, or paste rows copied from a spreadsheet.</p>
+          <div className="overflow-x-auto">
+            <div className="min-w-max space-y-1.5 md:min-w-0" role="table" aria-label="New options">
+              <div
+                role="row"
+                className="grid gap-2 px-0.5 text-xs font-medium tracking-wide text-zinc-500 uppercase"
+                style={{ gridTemplateColumns }}
+              >
+                <span role="columnheader">Option</span>
+                {columns.map((c) => (
+                  <span role="columnheader" key={c.id} className="truncate">
+                    {c.name}
+                  </span>
+                ))}
+                <span role="columnheader" aria-label="Remove" />
+              </div>
+              {rows.map((row, ri) => (
+                <div role="row" key={ri} className="grid items-start gap-2 px-0.5" style={{ gridTemplateColumns }}>
+                  <input
+                    role="cell"
+                    aria-label={`Option, row ${ri + 1}`}
+                    className={cellClass}
+                    value={row.title}
+                    maxLength={200}
+                    onChange={(e) => setCell(ri, "title", e.target.value)}
+                    onPaste={(e) => onPaste(e, ri, 0)}
+                  />
+                  {columns.map((c, ci) => {
+                    const label = `${c.name}, row ${ri + 1}`;
+                    const value = row.fields[c.id] ?? "";
+                    if (c.type === "boolean") {
+                      return (
+                        <select
+                          role="cell"
+                          key={c.id}
+                          aria-label={label}
+                          className={cellClass}
+                          value={value}
+                          onChange={(e) => setCell(ri, c.id, e.target.value)}
+                        >
+                          <option value="">—</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      );
+                    }
+                    return (
+                      <input
+                        role="cell"
+                        key={c.id}
+                        aria-label={label}
+                        className={cellClass}
+                        value={value}
+                        maxLength={c.type === "textarea" ? 2000 : 200}
+                        onChange={(e) => setCell(ri, c.id, e.target.value)}
+                        onPaste={(e) => onPaste(e, ri, ci + 1)}
+                      />
+                    );
+                  })}
+                  <button
+                    type="button"
+                    aria-label={`Remove row ${ri + 1}`}
+                    className="rounded px-1 py-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-30 dark:hover:bg-zinc-800"
+                    disabled={rows.length === 1}
+                    onClick={() => setRows((rs) => rs.filter((_, i) => i !== ri))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              className={secondaryButtonClass}
+              disabled={rows.length >= MAX_ROWS}
+              onClick={() => setRows((rs) => [...rs, ...blankRows(1)])}
+            >
+              + Add row
+            </button>
+            <button type="submit" className={primaryButtonClass} disabled={busy || filled.length === 0}>
+              {busy
+                ? "Adding…"
+                : filled.length > 0
+                  ? `Add ${filled.length} ${filled.length === 1 ? "option" : "options"}`
+                  : "Add options"}
+            </button>
+          </div>
+          {message && <p className="text-sm text-zinc-600 dark:text-zinc-400">{message}</p>}
+          {error && <p className={errorClass}>{error}</p>}
+        </div>
+      )}
     </form>
   );
 }
