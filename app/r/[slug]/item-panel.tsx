@@ -203,8 +203,28 @@ function ItemEditor({ slug, token, item, columns, onChanged }: Props) {
   );
 }
 
-function Comments({ slug, token, item, members, me, roomUpdatedAt, readOnly, onChanged }: Props) {
+// An option's comments. With `cellColumnId`, only that cell's thread (and new
+// comments go to that cell); without it, everything on the option, with cell
+// comments labelled, and a choice of what a new comment is about.
+export function Comments({
+  slug,
+  token,
+  item,
+  columns,
+  members,
+  me,
+  roomUpdatedAt,
+  readOnly,
+  onChanged,
+  cellColumnId,
+}: Pick<
+  Props,
+  "slug" | "token" | "item" | "columns" | "members" | "me" | "roomUpdatedAt" | "readOnly" | "onChanged"
+> & {
+  cellColumnId?: string;
+}) {
   const confirm = useConfirm();
+  const [about, setAbout] = useState("");
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [body, setBody] = useState("");
@@ -229,7 +249,7 @@ function Comments({ slug, token, item, members, me, roomUpdatedAt, readOnly, onC
     setBusy(true);
     setError(null);
     try {
-      const c = await addComment(slug, token, item.id, body);
+      const c = await addComment(slug, token, item.id, body, cellColumnId ?? (about || null));
       setComments((cs) => [...(cs ?? []), c]);
       setBody("");
       await onChanged();
@@ -260,19 +280,23 @@ function Comments({ slug, token, item, members, me, roomUpdatedAt, readOnly, onC
     }
   }
 
+  const columnName = new Map(columns.map((c) => [c.id, c.name]));
+  const shown = comments && (cellColumnId ? comments.filter((c) => c.columnId === cellColumnId) : comments);
+
   return (
-    <section className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-      <h3 className="font-semibold">Comments</h3>
-      {comments === null ? (
+    <section className={`space-y-3 ${cellColumnId ? "" : "border-t border-zinc-200 pt-4 dark:border-zinc-800"}`}>
+      {!cellColumnId && <h3 className="font-semibold">Comments</h3>}
+      {shown === null ? (
         !error && <p className="text-sm text-zinc-500">Loading…</p>
-      ) : comments.length === 0 ? (
+      ) : shown.length === 0 ? (
         <p className="text-sm text-zinc-500">No comments yet.</p>
       ) : (
         <ul className="space-y-3">
-          {comments.map((c) => (
+          {shown.map((c) => (
             <CommentRow
               key={c.id}
               comment={c}
+              about={!cellColumnId && c.columnId ? columnName.get(c.columnId) : undefined}
               author={names.get(c.authorId) ?? "Someone"}
               canEdit={!readOnly && c.authorId === me.id}
               canDelete={!readOnly && (c.authorId === me.id || me.isAdmin)}
@@ -288,6 +312,23 @@ function Comments({ slug, token, item, members, me, roomUpdatedAt, readOnly, onC
           <label htmlFor="new-comment" className="sr-only">
             Add a comment
           </label>
+          {!cellColumnId && columns.length > 0 && (
+            <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+              About
+              <select
+                className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                value={about}
+                onChange={(e) => setAbout(e.target.value)}
+              >
+                <option value="">The whole option</option>
+                {columns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <textarea
             id="new-comment"
             className={`${inputClass} min-h-20`}
@@ -315,6 +356,7 @@ const timeFormat = new Intl.DateTimeFormat(undefined, {
 function CommentRow({
   comment,
   author,
+  about,
   canEdit,
   canDelete,
   onEdit,
@@ -322,6 +364,8 @@ function CommentRow({
 }: {
   comment: Comment;
   author: string;
+  // The column a cell comment is about, when shown among all the option's comments.
+  about?: string;
   canEdit: boolean;
   canDelete: boolean;
   onEdit: (body: string) => Promise<void>;
@@ -353,6 +397,7 @@ function CommentRow({
         <span className="font-medium text-zinc-700 dark:text-zinc-300">{author}</span> ·{" "}
         {timeFormat.format(new Date(comment.createdAt))}
         {comment.editedAt && " (edited)"}
+        {about && <span className="ml-1 rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">on {about}</span>}
       </p>
       {editing ? (
         <form onSubmit={save} className="mt-1 space-y-2">
@@ -402,5 +447,29 @@ function CommentRow({
         </>
       )}
     </li>
+  );
+}
+
+// One cell's comment thread: what people said about this option's value in
+// this column.
+export function CellCommentsPanel(
+  props: Pick<
+    Props,
+    "slug" | "token" | "item" | "columns" | "members" | "me" | "roomUpdatedAt" | "readOnly" | "onChanged" | "onClose"
+  > & {
+    column: Column;
+  },
+) {
+  const { item, column, onClose } = props;
+  return (
+    <Panel title={`${item.title} · ${column.name}`} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-900">
+          <p className="text-xs text-zinc-500">{column.name}</p>
+          <FieldValue column={column} value={item.fields[column.id]} />
+        </div>
+        <Comments {...props} cellColumnId={column.id} />
+      </div>
+    </Panel>
   );
 }

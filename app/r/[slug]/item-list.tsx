@@ -22,7 +22,7 @@ import { useState } from "react";
 import type { Column, Item, VoteMode } from "@/lib/api";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { Menu } from "@/components/menu";
-import { EditableField, FieldValue, editClass } from "./fields";
+import { Cell, FieldValue, editClass } from "./fields";
 import { AddColumnButton, RowLabel } from "./row-labels";
 
 export { FieldValue };
@@ -40,6 +40,8 @@ type Props = {
   // Admin and unlocked: values, names and rows can be changed in the table.
   editable: boolean;
   onOpen: (item: Item) => void;
+  // Opens one cell's comment thread.
+  onOpenCell: (item: Item, column: Column) => void;
   onReorder: (ids: string[]) => void;
   onEditField: (item: Item, column: Column, value: string | boolean | null) => Promise<void>;
   onRename: (item: Item, title: string) => Promise<void>;
@@ -124,11 +126,13 @@ export function ItemList(props: Props) {
                     ci < columns.length - 1 ? "border-b border-b-zinc-100 dark:border-b-zinc-900" : ""
                   } ${cellBg(item)}`}
                 >
-                  {editable ? (
-                    <EditableField column={c} value={item.fields[c.id]} onSave={(v) => props.onEditField(item, c, v)} />
-                  ) : (
-                    <FieldValue column={c} value={item.fields[c.id]} />
-                  )}
+                  <Cell
+                    column={c}
+                    value={item.fields[c.id]}
+                    onSave={editable ? (v) => props.onEditField(item, c, v) : undefined}
+                    commentCount={item.cellComments?.[c.id] ?? 0}
+                    onComment={() => props.onOpenCell(item, c)}
+                  />
                 </div>
               ))}
             </div>
@@ -172,6 +176,16 @@ export function ItemList(props: Props) {
                                 <button type="button" onClick={() => props.onOpen(item)} className="text-left">
                                   <FieldValue column={c} value={item.fields[c.id]} clamp />
                                 </button>
+                                {(item.cellComments?.[c.id] ?? 0) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => props.onOpenCell(item, c)}
+                                    aria-label={`${item.cellComments[c.id]} comments on ${c.name}`}
+                                    className="ml-1 text-xs text-zinc-500 tabular-nums"
+                                  >
+                                    💬 {item.cellComments[c.id]}
+                                  </button>
+                                )}
                               </dd>
                             </div>
                           ))}

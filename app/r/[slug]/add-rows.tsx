@@ -40,12 +40,17 @@ type Props = {
   columns: Column[];
   // Titles already in the room, so fallback names don't collide.
   existingTitles: string[];
+  // Start expanded (e.g. a room with no options yet).
+  defaultOpen: boolean;
   onAdded: () => Promise<void>;
 };
 
 // The add-option form above the table. Starts as one option; pasting rows
 // copied from a spreadsheet (tab-separated, one per line) fills more.
-export function AddOptionForm({ slug, token, columns, existingTitles, onAdded }: Props) {
+export function AddOptionForm({ slug, token, columns, existingTitles, defaultOpen, onAdded }: Props) {
+  const [open, setOpen] = useState(defaultOpen);
+  // Like GitHub's "Create more": keep the form open for the next one.
+  const [addAnother, setAddAnother] = useState(false);
   const [rows, setRows] = useState<Row[]>(() => [blankRow()]);
   const [busy, setBusy] = useState(false);
   const [fetching, setFetching] = useState<Set<number>>(new Set());
@@ -188,7 +193,8 @@ export function AddOptionForm({ slug, token, columns, existingTitles, onAdded }:
       }
       setRows([blankRow()]);
       await onAdded();
-      firstInput.current?.focus();
+      if (addAnother) firstInput.current?.focus();
+      else setOpen(false);
     } catch (err) {
       setError(errorMessage(err, "Couldn't add that."));
     } finally {
@@ -206,78 +212,103 @@ export function AddOptionForm({ slug, token, columns, existingTitles, onAdded }:
 
   const n = filled.length;
   return (
-    <section aria-label="Add an option" className="space-y-2">
-      {rows.map((row, ri) => (
-        <div key={ri} className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
-          <div className="min-w-0 flex-1 space-y-2">
-            <AutoTextarea
-              ref={ri === 0 ? firstInput : undefined}
-              aria-label={`Option name${rows.length > 1 ? `, row ${ri + 1}` : ""}`}
-              placeholder={fetching.has(ri) ? "Getting the page title…" : "Add an option: a name, or paste a link"}
-              className={`${inputClass} text-base`}
-              value={row.title}
-              maxLength={200}
-              onChange={(e) => setCell(ri, "title", e.target.value)}
-              onPaste={(e) => onPaste(e, ri, 0)}
-              onKeyDown={(e) => onKeyDown(e)}
-            />
-            {columns.length > 0 && (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
-                {columns.map((c, ci) => (
-                  <label key={c.id} className="block min-w-0">
-                    <span className={`${labelClass} text-xs`}>{c.name}</span>
-                    {c.type === "boolean" ? (
-                      <select
-                        className={inputClass}
-                        value={row.fields[c.id] ?? ""}
-                        onChange={(e) => setCell(ri, c.id, e.target.value)}
-                      >
-                        <option value="">—</option>
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
-                      </select>
-                    ) : (
-                      <AutoTextarea
-                        className={inputClass}
-                        value={row.fields[c.id] ?? ""}
-                        maxLength={c.type === "textarea" ? 2000 : 200}
-                        onChange={(e) => setCell(ri, c.id, e.target.value)}
-                        onPaste={(e) => onPaste(e, ri, ci + 1)}
-                        onKeyDown={(e) => onKeyDown(e, c.type === "textarea")}
-                      />
-                    )}
-                  </label>
-                ))}
+    <section aria-label="Add an option" className="rounded-xl border border-zinc-200 dark:border-zinc-800">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls="add-option-body"
+          onClick={() => setOpen((v) => !v)}
+          className="flex w-full items-center gap-2 px-4 py-3 text-left font-medium"
+        >
+          <span aria-hidden className={`inline-block text-zinc-400 transition-transform ${open ? "rotate-90" : ""}`}>
+            ▸
+          </span>
+          Add an option
+        </button>
+      </h2>
+      {open && (
+        <div id="add-option-body" className="space-y-3 border-t border-zinc-200 p-3 dark:border-zinc-800">
+          {rows.map((row, ri) => (
+            <div key={ri} className="flex items-start gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+              <div className="min-w-0 flex-1 space-y-2">
+                <AutoTextarea
+                  ref={ri === 0 ? firstInput : undefined}
+                  aria-label={`Option name${rows.length > 1 ? `, row ${ri + 1}` : ""}`}
+                  placeholder={fetching.has(ri) ? "Getting the page title…" : "Add an option: a name, or paste a link"}
+                  className={`${inputClass} text-base`}
+                  value={row.title}
+                  maxLength={200}
+                  onChange={(e) => setCell(ri, "title", e.target.value)}
+                  onPaste={(e) => onPaste(e, ri, 0)}
+                  onKeyDown={(e) => onKeyDown(e)}
+                />
+                {columns.length > 0 && (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
+                    {columns.map((c, ci) => (
+                      <label key={c.id} className="block min-w-0">
+                        <span className={`${labelClass} text-xs`}>{c.name}</span>
+                        {c.type === "boolean" ? (
+                          <select
+                            className={inputClass}
+                            value={row.fields[c.id] ?? ""}
+                            onChange={(e) => setCell(ri, c.id, e.target.value)}
+                          >
+                            <option value="">—</option>
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        ) : (
+                          <AutoTextarea
+                            className={inputClass}
+                            value={row.fields[c.id] ?? ""}
+                            maxLength={c.type === "textarea" ? 2000 : 200}
+                            onChange={(e) => setCell(ri, c.id, e.target.value)}
+                            onPaste={(e) => onPaste(e, ri, ci + 1)}
+                            onKeyDown={(e) => onKeyDown(e, c.type === "textarea")}
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+              {ri > 0 && (
+                <button
+                  type="button"
+                  aria-label={`Remove row ${ri + 1}`}
+                  onClick={() => removeRow(ri)}
+                  className="h-10 min-w-10 shrink-0 rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="max-w-prose text-xs text-zinc-500" aria-live="polite">
+              {error ? <span className={errorClass}>{error}</span> : (message ?? HELP)}
+            </p>
+            <div className="ml-auto flex items-center gap-3">
+              <label className="flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-400">
+                <input type="checkbox" checked={addAnother} onChange={(e) => setAddAnother(e.target.checked)} />
+                Add another
+              </label>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={busy || n === 0}
+                aria-label={n > 1 ? `Add ${n} options` : "Add option"}
+                title={n > 1 ? `Add ${n} options` : "Add option"}
+                className={`${primaryButtonClass} h-10 min-w-10 gap-1 px-3 text-lg leading-none`}
+              >
+                <span aria-hidden>+</span>
+                {n > 1 && <span className="text-sm tabular-nums">{n}</span>}
+              </button>
+            </div>
           </div>
-          {ri === 0 ? (
-            <button
-              type="button"
-              onClick={submit}
-              disabled={busy || n === 0}
-              aria-label={n > 1 ? `Add ${n} options` : "Add option"}
-              title={n > 1 ? `Add ${n} options` : "Add option"}
-              className={`${primaryButtonClass} h-10 min-w-10 shrink-0 gap-1 px-3 text-lg leading-none`}
-            >
-              <span aria-hidden>+</span>
-              {n > 1 && <span className="text-sm tabular-nums">{n}</span>}
-            </button>
-          ) : (
-            <button
-              type="button"
-              aria-label={`Remove row ${ri + 1}`}
-              onClick={() => removeRow(ri)}
-              className="h-10 min-w-10 shrink-0 rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
-            >
-              ×
-            </button>
-          )}
         </div>
-      ))}
-      <p className="text-xs text-zinc-500" aria-live="polite">
-        {error ? <span className={errorClass}>{error}</span> : (message ?? HELP)}
-      </p>
+      )}
     </section>
   );
 }

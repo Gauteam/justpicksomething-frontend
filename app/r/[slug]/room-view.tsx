@@ -23,7 +23,7 @@ import { errorClass, secondaryButtonClass } from "@/components/styles";
 import { AddOptionForm } from "./add-rows";
 import { ItemList, type Voting } from "./item-list";
 import { AddColumnButton } from "./row-labels";
-import { ItemPanel } from "./item-panel";
+import { CellCommentsPanel, ItemPanel } from "./item-panel";
 import { JoinForm } from "./join-form";
 import { MembersPanel } from "./members-panel";
 import { SettingsPanel } from "./settings-panel";
@@ -68,6 +68,8 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
   const [showSettings, setShowSettings] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
+  // The cell whose comment thread is open.
+  const [openCell, setOpenCell] = useState<{ itemId: string; columnId: string } | null>(null);
   const confirm = useConfirm();
   const [sort, setSort] = useState<Sort>(() => loadSort(slug));
   const [actionError, setActionError] = useState<string | null>(null);
@@ -92,6 +94,8 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
   const active = effectiveSort(sort, data.columns);
   const items = sortItems(data.items, data.columns, active);
   const openItem = data.items.find((i) => i.id === openItemId);
+  const cellItem = openCell && data.items.find((i) => i.id === openCell.itemId);
+  const cellColumn = openCell && data.columns.find((c) => c.id === openCell.columnId);
   const isAdmin = data.me.isAdmin;
   const locked = room.lockedAt !== null;
   const canEdit = !locked;
@@ -291,6 +295,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
             token={token}
             columns={data.columns}
             existingTitles={data.items.map((i) => i.title)}
+            defaultOpen={data.items.length === 0}
             onAdded={refresh}
           />
           {/* With no table yet, details (rows) are added from here. */}
@@ -327,6 +332,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
             highlight={highlight}
             editable={editable}
             onOpen={(item) => setOpenItemId(item.id)}
+            onOpenCell={(item, column) => setOpenCell({ itemId: item.id, columnId: column.id })}
             onReorder={reorder}
             onEditField={editField}
             onRename={renameOption}
@@ -353,6 +359,22 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
           onDelete={() => deleteOption(openItem)}
           onChanged={refresh}
           onClose={() => setOpenItemId(null)}
+        />
+      )}
+      {cellItem && cellColumn && (
+        <CellCommentsPanel
+          key={`${cellItem.id}:${cellColumn.id}`}
+          slug={slug}
+          token={token}
+          item={cellItem}
+          column={cellColumn}
+          columns={data.columns}
+          members={data.members}
+          me={data.me}
+          roomUpdatedAt={room.updatedAt}
+          readOnly={locked}
+          onChanged={refresh}
+          onClose={() => setOpenCell(null)}
         />
       )}
       {showMembers && (

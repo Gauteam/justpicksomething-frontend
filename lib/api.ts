@@ -20,6 +20,8 @@ export type Item = {
   fields: Fields;
   position: number;
   commentCount: number;
+  // Comments on single cells, by column ID (included in commentCount).
+  cellComments: Record<string, number>;
   up: number;
   down: number;
   score: number;
@@ -54,6 +56,8 @@ export type RoomData = {
 export type Comment = {
   id: string;
   itemId: string;
+  // Set when the comment is about one cell (this column's value).
+  columnId: string | null;
   authorId: string;
   body: string;
   createdAt: string;
@@ -201,11 +205,18 @@ export async function listComments(slug: string, token: string, itemId: string):
   return ((await res.json()) as { comments?: Comment[] }).comments ?? [];
 }
 
-export async function addComment(slug: string, token: string, itemId: string, body: string): Promise<Comment> {
+// Comments on an option, or on one of its cells when columnId is given.
+export async function addComment(
+  slug: string,
+  token: string,
+  itemId: string,
+  body: string,
+  columnId?: string | null,
+): Promise<Comment> {
   const res = await request(`${roomPath(slug)}/items/${itemId}/comments`, {
     method: "POST",
     token,
-    body: JSON.stringify({ body }),
+    body: JSON.stringify(columnId ? { body, columnId } : { body }),
   });
   return res.json();
 }
