@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
 import type { Column, Item, VoteMode } from "@/lib/api";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { CommenterDots } from "@/components/commenter-dots";
 import { MemberName } from "@/components/member-name";
 import { Menu } from "@/components/menu";
 import { Cell, FieldValue, editClass } from "./fields";
@@ -104,7 +105,7 @@ export function ItemList(props: Props) {
                         <OptionHeading {...props} item={item} rank={i + 1} handle={canDrag ? handle : null} />
                         <div className="flex flex-wrap items-center gap-1">
                           <Votes item={item} voting={voting} />
-                          <CommentButton item={item} onOpen={props.onOpen} />
+                          <CommentButton item={item} colors={props.colors} onOpen={props.onOpen} />
                         </div>
                       </div>
                     )}
@@ -134,6 +135,7 @@ export function ItemList(props: Props) {
                     value={item.fields[c.id]}
                     onSave={editable ? (v) => props.onEditField(item, c, v) : undefined}
                     commentCount={item.cellComments?.[c.id] ?? 0}
+                    commenterColors={(item.cellCommenters?.[c.id] ?? []).map((id) => props.colors.get(id) ?? "#a1a1aa")}
                     onComment={() => props.onOpenCell(item, c)}
                   />
                 </div>
@@ -165,7 +167,7 @@ export function ItemList(props: Props) {
                     <OptionHeading {...props} item={item} rank={i + 1} handle={canDrag ? handle : null} />
                     <div className="flex items-center gap-1">
                       <Votes item={item} voting={voting} />
-                      <CommentButton item={item} onOpen={props.onOpen} />
+                      <CommentButton item={item} colors={props.colors} onOpen={props.onOpen} />
                     </div>
                     {columns.some((c) => item.fields[c.id] !== undefined) && (
                       <dl className="space-y-1 text-sm">
@@ -441,7 +443,15 @@ function VoteButton(props: {
   );
 }
 
-function CommentButton({ item, onOpen }: { item: Item; onOpen: (item: Item) => void }) {
+function CommentButton({
+  item,
+  colors,
+  onOpen,
+}: {
+  item: Item;
+  colors: Map<string, string>;
+  onOpen: (item: Item) => void;
+}) {
   return (
     <button
       type="button"
@@ -451,6 +461,7 @@ function CommentButton({ item, onOpen }: { item: Item; onOpen: (item: Item) => v
     >
       <span aria-hidden>💬</span>
       {item.commentCount}
+      <CommenterDots ids={item.commenters ?? []} colors={colors} />
     </button>
   );
 }

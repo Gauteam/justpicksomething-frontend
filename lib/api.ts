@@ -22,6 +22,9 @@ export type Item = {
   commentCount: number;
   // Comments on single cells, by column ID (included in commentCount).
   cellComments: Record<string, number>;
+  // Member IDs who commented: on the item (any comment), and per cell.
+  commenters: string[];
+  cellCommenters: Record<string, string[]>;
   up: number;
   down: number;
   score: number;
@@ -53,6 +56,9 @@ export type RoomData = {
   items: Item[];
 };
 
+// A plain comment, or a quick signal (text optional): !! emphasis, 👍, 👎.
+export type CommentKind = "comment" | "emphasis" | "up" | "down";
+
 export type Comment = {
   id: string;
   itemId: string;
@@ -60,6 +66,7 @@ export type Comment = {
   columnId: string | null;
   authorId: string;
   body: string;
+  kind: CommentKind;
   createdAt: string;
   editedAt: string | null;
   // Emphasis: ★ (positive) and ⚑ (concern) counts, and the viewer's own (1, -1, 0).
@@ -216,11 +223,12 @@ export async function addComment(
   itemId: string,
   body: string,
   columnId?: string | null,
+  kind: CommentKind = "comment",
 ): Promise<Comment> {
   const res = await request(`${roomPath(slug)}/items/${itemId}/comments`, {
     method: "POST",
     token,
-    body: JSON.stringify(columnId ? { body, columnId } : { body }),
+    body: JSON.stringify({ body, kind, ...(columnId ? { columnId } : {}) }),
   });
   return res.json();
 }

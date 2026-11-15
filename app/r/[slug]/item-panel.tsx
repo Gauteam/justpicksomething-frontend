@@ -5,6 +5,7 @@ import {
   addComment,
   deleteComment,
   setReaction,
+  type CommentKind,
   editComment,
   errorMessage,
   listComments,
@@ -41,18 +42,29 @@ type Props = {
   onDelete: () => void;
 };
 
+// The option's side rail: a compact card (name, votes, values) with Edit for
+// admins (the full editor opens in place), then the comments.
 export function ItemPanel(props: Props) {
-  const { item, onClose } = props;
+  const { item, columns, onClose } = props;
+  const [editing, setEditing] = useState(false);
+  const filled = columns.filter((c) => item.fields[c.id] !== undefined);
+
   return (
     <Panel title={item.title} onClose={onClose}>
       <div className="space-y-6">
-        <div className="flex items-center gap-2">
-          <Votes item={item} voting={props.voting} />
-        </div>
-        {props.canEditItem ? <ItemEditor {...props} /> : <ItemDetails {...props} />}
-        <Comments {...props} />
-        {props.canEditItem && (
-          <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
+        {editing ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Edit option</h3>
+              <button
+                type="button"
+                className="text-sm text-zinc-600 hover:underline dark:text-zinc-400"
+                onClick={() => setEditing(false)}
+              >
+                Done
+              </button>
+            </div>
+            <ItemEditor {...props} />
             <button
               type="button"
               onClick={props.onDelete}
@@ -61,28 +73,49 @@ export function ItemPanel(props: Props) {
               Delete option
             </button>
           </div>
+        ) : (
+          <div className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 font-semibold break-words">{item.title}</p>
+              {props.canEditItem && (
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="shrink-0 rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  ✎ Edit
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <Votes item={item} voting={props.voting} />
+            </div>
+            {filled.length > 0 && (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                {filled.map((c) => (
+                  <div key={c.id} className="contents">
+                    <dt className="text-zinc-500">{c.name}</dt>
+                    <dd className="min-w-0">
+                      <FieldValue column={c} value={item.fields[c.id]} clamp />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
         )}
+        <Comments {...props} />
       </div>
     </Panel>
   );
 }
 
-// The item's values, read-only: for non-admins and in locked rooms.
-function ItemDetails({ item, columns }: Props) {
-  if (columns.length === 0) return null;
-  return (
-    <dl className="space-y-2 text-sm">
-      {columns.map((c) => (
-        <div key={c.id}>
-          <dt className="text-zinc-500">{c.name}</dt>
-          <dd>
-            <FieldValue column={c} value={item.fields[c.id]} />
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
+// The quick-signal post buttons (a plain Comment is the form's submit).
+const KIND_BUTTONS: { kind: CommentKind; symbol: string; label: string; className: string }[] = [
+  { kind: "emphasis", symbol: "!!", label: "Post with emphasis", className: "bg-red-600 hover:bg-red-700" },
+  { kind: "up", symbol: "👍", label: "Post a thumbs up", className: "bg-green-600 hover:bg-green-700" },
+  { kind: "down", symbol: "👎", label: "Post a thumbs down", className: "bg-orange-500 hover:bg-orange-600" },
+];
 
 // Boolean values are edited as "" (empty) / "yes" / "no".
 type Draft = { title: string; fields: Record<string, string> };
@@ -247,11 +280,17 @@ export function Comments({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!body.trim()) return;
+    post("comment");
+  }
+
+  // Posts what's typed as `kind`. A plain comment needs text; the signals
+  // (!!, 👍, 👎) can go without.
+  async function post(kind: CommentKind) {
+    if (kind === "comment" && !body.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const c = await addComment(slug, token, item.id, body, cellColumnId ?? (about || null));
+      const c = await addComment(slug, token, item.id, body, cellColumnId ?? (about || null), kind);
       setComments((cs) => [...(cs ?? []), c]);
       setBody("");
       await onChanged();
@@ -353,9 +392,24 @@ export function Comments({
             maxLength={1000}
             onChange={(e) => setBody(e.target.value)}
           />
-          <button type="submit" className={primaryButtonClass} disabled={busy || !body.trim()}>
-            {busy ? "Posting…" : "Comment"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" className={primaryButtonClass} disabled={busy || !body.trim()}>
+              Comment
+            </button>
+            {KIND_BUTTONS.map((k) => (
+              <button
+                key={k.kind}
+                type="button"
+                disabled={busy}
+                onClick={() => post(k.kind)}
+                aria-label={k.label}
+                title={k.label}
+                className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-white transition disabled:opacity-50 ${k.className}`}
+              >
+                {k.symbol}
+              </button>
+            ))}
+          </div>
         </form>
       )}
     </section>

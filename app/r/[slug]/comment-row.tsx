@@ -6,6 +6,14 @@ import { Linkify } from "@/components/linkify";
 import { MemberName } from "@/components/member-name";
 import { errorClass, inputClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
 
+// Signal comments get a colored border around the whole comment, with their
+// symbol on the bottom-right corner. Plain comments have neither.
+const KIND_STYLES: Record<string, { symbol: string; label: string; border: string; badge: string }> = {
+  emphasis: { symbol: "!!", label: "Emphasis", border: "border-red-600/50", badge: "bg-red-600/50" },
+  up: { symbol: "👍", label: "Thumbs up", border: "border-green-600/50", badge: "bg-green-600/50" },
+  down: { symbol: "👎", label: "Thumbs down", border: "border-orange-500/50", badge: "bg-orange-500/50" },
+};
+
 const timeFormat = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -45,6 +53,7 @@ export function CommentRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(comment.body);
+  const kind = comment.kind !== "comment" ? KIND_STYLES[comment.kind] : undefined;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +73,25 @@ export function CommentRow({
   }
 
   return (
-    <li className="text-sm">
+    <li
+      className={`text-sm ${kind ? `relative rounded-xl border-2 px-3 pt-2 pb-3 ${kind.border}` : ""}`}
+      aria-label={kind ? `${kind.label} comment` : undefined}
+    >
+      {kind && (
+        // A solid page-colored backing, so the faded badge doesn't let the
+        // border show through it.
+        <span
+          aria-hidden
+          title={kind.label}
+          className="absolute -right-2 -bottom-2.5 rounded-full bg-white ring-2 ring-white dark:bg-zinc-950 dark:ring-zinc-950"
+        >
+          <span
+            className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold text-white ${kind.badge}`}
+          >
+            {kind.symbol}
+          </span>
+        </span>
+      )}
       <p className="text-xs text-zinc-500">
         <MemberName name={author} color={authorColor} /> · {timeFormat.format(new Date(comment.createdAt))}
         {comment.editedAt && " (edited)"}

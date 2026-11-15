@@ -39,6 +39,7 @@ export function Cell({
   value,
   onSave,
   commentCount = 0,
+  commenterColors = [],
   onComment,
 }: {
   column: Column;
@@ -46,6 +47,8 @@ export function Cell({
   // Absent: not editable (non-admins, locked rooms).
   onSave?: (value: string | boolean | null) => Promise<void>;
   commentCount?: number;
+  // Colors of the members who commented on this cell (dots by the 💬).
+  commenterColors?: string[];
   onComment?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -132,6 +135,14 @@ export function Cell({
           >
             <span aria-hidden>💬</span>
             {commentCount > 0 && commentCount}
+            {commenterColors.length > 0 && (
+              <span aria-hidden className="ml-0.5 inline-flex items-center gap-0.5">
+                {commenterColors.slice(0, 4).map((c, i) => (
+                  <span key={i} className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: c }} />
+                ))}
+                {commenterColors.length > 4 && <span className="text-[0.6rem]">+{commenterColors.length - 4}</span>}
+              </span>
+            )}
           </button>
         )}
         {onSave && (

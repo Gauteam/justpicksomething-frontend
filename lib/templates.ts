@@ -4,7 +4,8 @@ import type { ColumnType } from "./api";
 // choose which with checkboxes (`checked` = on by default) and can switch a
 // column to an alternative name before creating. Alternatives are only other
 // wordings of the same thing ("Price per night" / "Total price"); anything
-// that means something different is its own column. Only the chosen name reaches the room. Numbers and
+// that means something different is its own column. No Notes column:
+// comments are the notes. Only the chosen name reaches the room. Numbers and
 // prices are short text: there's no number type, and natural sort still
 // orders them.
 export type TemplateColumn = { name: string; type: ColumnType; checked: boolean; alternatives: string[] };
@@ -36,7 +37,6 @@ export const TEMPLATES: Template[] = [
       col("Pool", "boolean", false),
       col("Pet friendly", "boolean", false),
       col("Parking", "boolean", false),
-      col("Notes", "textarea", true),
     ],
   },
   {
@@ -56,7 +56,6 @@ export const TEMPLATES: Template[] = [
       col("Gym", "boolean", false),
       col("Parking", "boolean", false),
       col("Pet friendly", "boolean", false),
-      col("Notes", "textarea", true),
     ],
   },
   {
@@ -79,7 +78,6 @@ export const TEMPLATES: Template[] = [
       col("Outdoor seating", "boolean", false),
       col("Kid friendly", "boolean", false),
       col("Open late", "boolean", false),
-      col("Notes", "textarea", true),
     ],
   },
 ];
