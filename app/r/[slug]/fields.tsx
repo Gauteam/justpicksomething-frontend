@@ -24,8 +24,12 @@ export const editClass =
 const iconButton =
   "inline-flex h-6 min-w-6 items-center justify-center gap-0.5 rounded px-1 text-xs text-zinc-400 tabular-nums hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200";
 
-// One table cell: the value, with buttons on its right: 💬 for this cell's
-// comment thread (always there; shows a count once it has comments) and, for
+// Shown on hover (or keyboard focus); always shown on touch screens, which
+// can't hover.
+const hoverOnly = "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
+
+// One table cell: the value, with buttons on its right, shown on hover: 💬
+// for this cell's comment thread (stays visible once it has comments) and, for
 // admins, ✎ to edit. Clicking ✎ turns the cell into a box: Enter or
 // click-away saves, Escape cancels; long text saves on Ctrl/Cmd+Enter or
 // click-away; yes/no saves as soon as you pick. Clicking the value itself
@@ -124,7 +128,7 @@ export function Cell({
             onClick={onComment}
             aria-label={`${commentCount} ${commentCount === 1 ? "comment" : "comments"} on ${column.name}`}
             title={`Comment on ${column.name}`}
-            className={`${iconButton} ${commentCount === 0 ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : ""}`}
+            className={`${iconButton} ${commentCount === 0 ? hoverOnly : ""}`}
           >
             <span aria-hidden>💬</span>
             {commentCount > 0 && commentCount}
@@ -136,7 +140,7 @@ export function Cell({
             onClick={start}
             aria-label={`Edit ${column.name}`}
             title={`Edit ${column.name}`}
-            className={iconButton}
+            className={`${iconButton} ${hoverOnly}`}
           >
             <span aria-hidden>✎</span>
           </button>
