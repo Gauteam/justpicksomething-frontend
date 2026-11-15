@@ -218,6 +218,17 @@ export async function deleteComment(slug: string, token: string, commentId: stri
   await request(`${roomPath(slug)}/comments/${commentId}`, { method: "DELETE", token });
 }
 
+// Any member. The page title for a pasted link (what the browser tab shows),
+// or null if the API couldn't get one (e.g. VRBO blocks server requests).
+export async function linkTitle(slug: string, token: string, url: string): Promise<string | null> {
+  try {
+    const res = await request(`${roomPath(slug)}/link-title`, { method: "POST", token, body: JSON.stringify({ url }) });
+    return ((await res.json()) as { title: string | null }).title;
+  } catch {
+    return null;
+  }
+}
+
 export const errorMessage = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
 
 export type SettingsPatch = Partial<

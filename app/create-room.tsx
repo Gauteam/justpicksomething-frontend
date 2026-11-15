@@ -5,12 +5,20 @@ import { useState } from "react";
 import { createRoom, errorMessage } from "@/lib/api";
 import { saveSession } from "@/lib/session";
 import { TEMPLATES, type Template } from "@/lib/templates";
+import { CustomIcon, HomeIcon, HotelIcon, RestaurantIcon } from "@/components/icons";
 import { ShareCard } from "@/components/share-card";
 import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/styles";
 
 type Created = { slug: string; name: string; passcode: string };
 
 const CUSTOM = "custom";
+
+const ICONS: Record<string, React.ReactNode> = {
+  rentals: <HomeIcon />,
+  hotels: <HotelIcon />,
+  restaurants: <RestaurantIcon />,
+  [CUSTOM]: <CustomIcon />,
+};
 
 const typeHint = { text: "", boolean: "yes / no", textarea: "long text" } as const;
 
@@ -79,27 +87,33 @@ export function CreateRoom() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="decide-on" className="mb-2 block text-lg font-medium">
-          I want to decide on…
-        </label>
-        <select
-          id="decide-on"
-          className={`${inputClass} py-3 text-lg`}
-          value={choice}
-          onChange={(e) => choose(e.target.value)}
-        >
-          <option value="" disabled>
-            Choose one
-          </option>
-          {TEMPLATES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
-          ))}
-          <option value={CUSTOM}>Custom</option>
-        </select>
-      </div>
+      <fieldset>
+        <legend className="mb-3 block text-lg font-medium">I want to decide on…</legend>
+        <div className="grid grid-cols-2 gap-3">
+          {[...TEMPLATES.map((t) => ({ id: t.id, label: t.label })), { id: CUSTOM, label: "Something else" }].map(
+            (t) => (
+              <label
+                key={t.id}
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border px-3 py-5 text-center text-sm font-medium transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-zinc-400 ${
+                  choice === t.id
+                    ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                    : "border-zinc-300 hover:border-zinc-900 dark:border-zinc-700 dark:hover:border-zinc-100"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="decide-on"
+                  className="sr-only"
+                  checked={choice === t.id}
+                  onChange={() => choose(t.id)}
+                />
+                {ICONS[t.id]}
+                {t.label}
+              </label>
+            ),
+          )}
+        </div>
+      </fieldset>
 
       {choice && (
         <>

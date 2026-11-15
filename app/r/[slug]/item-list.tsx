@@ -1,7 +1,5 @@
 "use client";
 
-import { useRef, useState } from "react";
-
 import {
   closestCenter,
   DndContext,
@@ -13,79 +11,52 @@ import {
 } from "@dnd-kit/core";
 import {
   arrayMove,
+  horizontalListSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useState } from "react";
 import type { Column, Item, VoteMode } from "@/lib/api";
-import { effectiveSort, isSortable, type Sort, type SortKey } from "@/lib/sort";
-import { Linkify } from "@/components/linkify";
+import { AutoTextarea } from "@/components/auto-textarea";
+import { Menu } from "@/components/menu";
+import { EditableField, FieldValue, editClass } from "./fields";
+import { AddColumnButton, RowLabel } from "./row-labels";
+
+export { FieldValue };
 
 type Props = {
+  slug: string;
+  token: string;
   items: Item[];
   columns: Column[];
   names: Map<string, string>;
-  sort: Sort;
   canDrag: boolean;
-  onSort: (key: SortKey) => void;
   voting: Voting;
-  // Highlighted rows (the top pick once the room is locked in).
+  // Highlighted options (the top pick once the room is locked in).
   highlight: Set<string>;
+  // Admin and unlocked: values, names and rows can be changed in the table.
+  editable: boolean;
   onOpen: (item: Item) => void;
   onReorder: (ids: string[]) => void;
-  // Rendered inside the table under the last row (the new-option input row),
-  // given the table's track sizes and how many columns come before Option.
-  footer?: (grid: { gridTemplateColumns: string; lead: number }) => React.ReactNode;
-  // Beside the table on its right, lined up with the bottom row (the + button).
-  aside?: React.ReactNode;
-  // Saves a value edited in place in the table; absent = read-only (locked).
-  onEditField?: (item: Item, column: Column, value: string | boolean | null) => Promise<void>;
-  // Asks to delete an option (opens a confirmation); absent = no × buttons.
-  onDelete?: (item: Item) => void;
+  onEditField: (item: Item, column: Column, value: string | boolean | null) => Promise<void>;
+  onRename: (item: Item, title: string) => Promise<void>;
+  onDelete: (item: Item) => void;
+  onColumnsChanged: () => Promise<void>;
+  onError: (message: string | null) => void;
 };
 
-export function ItemList({
-  items,
-  columns,
-  names,
-  sort,
-  canDrag,
-  onSort,
-  voting,
-  highlight,
-  onOpen,
-  onReorder,
-  footer,
-  aside,
-  onEditField,
-  onDelete,
-}: Props) {
+// The comparison table, flipped: each option is a column (its name, rank,
+// votes and comments at the top) and each detail is a row. On desktop it fits
+// the page width; phones get one card per option instead.
+export function ItemList(props: Props) {
+  const { items, columns, canDrag, voting, highlight, editable, onReorder } = props;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const active = effectiveSort(sort, columns);
-
-  // Same track sizes for the header and every row so the "table" lines up.
-  // Rank, votes and comments come first so they're always in view, even
-  // when columns scroll.
-  const gridTemplateColumns = [
-    "2rem",
-    voting.mode === "budget" && voting.allowDuplicates ? "8rem" : "7rem",
-    "3.5rem",
-    canDrag ? "2rem" : null,
-    "minmax(12rem, 2fr)",
-    ...columns.map((c) =>
-      c.type === "boolean" ? "6rem" : c.type === "textarea" ? "minmax(12rem, 2fr)" : "minmax(8rem, 1fr)",
-    ),
-    onDelete ? "2rem" : null,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  // Columns before Option: #, votes, comments, drag handle (if any).
-  const lead = canDrag ? 4 : 3;
 
   function onDragEnd(e: DragEndEvent) {
     if (!e.over || e.active.id === e.over.id) return;
@@ -93,168 +64,214 @@ export function ItemList({
     onReorder(arrayMove(ids, ids.indexOf(String(e.active.id)), ids.indexOf(String(e.over.id))));
   }
 
-  // The table and the cards each get their own drag context: both render the
-  // same item IDs, which can't share one.
-  const sortable = (children: React.ReactNode) => (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-        {children}
-      </SortableContext>
-    </DndContext>
-  );
+  // Row labels, then one equal share of the remaining width per option.
+  const gridTemplateColumns = `minmax(6rem, 10rem) repeat(${items.length}, minmax(0, 1fr))`;
+  const cellBg = (item: Item) => (highlight.has(item.id) ? "bg-amber-50 dark:bg-amber-950/40" : "");
+  const manage = {
+    slug: props.slug,
+    token: props.token,
+    columns,
+    onChanged: props.onColumnsChanged,
+    onError: props.onError,
+  };
 
   return (
     <>
-      {sortable(
-        /* Desktop: comparison table */
-        <div className="hidden items-end gap-3 md:flex">
-          <div className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <div className="min-w-max" role="table" aria-label="Options">
-              <div
-                role="row"
-                className="grid items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium tracking-wide text-zinc-500 uppercase dark:border-zinc-800 dark:bg-zinc-900"
-                style={{ gridTemplateColumns }}
-              >
-                <span role="columnheader">#</span>
-                <HeaderButton label="Votes" sortKey="score" active={active} onSort={onSort} />
-                <span role="columnheader" aria-label="Comments" />
-                {canDrag && <span role="columnheader" aria-label="Reorder" />}
-                <HeaderButton label="Option" sortKey="title" active={active} onSort={onSort} />
-                {columns.map((c) =>
-                  isSortable(c) ? (
-                    <HeaderButton key={c.id} label={c.name} sortKey={`col:${c.id}`} active={active} onSort={onSort} />
-                  ) : (
-                    <span key={c.id} role="columnheader" className="truncate">
-                      {c.name}
-                    </span>
-                  ),
-                )}
-                {onDelete && <span role="columnheader" aria-label="Delete" />}
-              </div>
-              {items.length === 0 && (
-                <p className="px-3 py-6 text-center text-sm text-zinc-500">
-                  Nothing here yet. Add the first option below.
-                </p>
-              )}
-              {items.map((item, i) => (
-                <SortableRow key={item.id} id={item.id} disabled={!canDrag}>
-                  {(handle) => (
-                    <div
-                      role="row"
-                      className={`grid items-center gap-3 border-b border-zinc-100 px-3 py-2 last:border-b-0 dark:border-zinc-900 ${
-                        highlight.has(item.id) ? "bg-amber-50 dark:bg-amber-950/40" : "bg-white dark:bg-zinc-950"
-                      }`}
-                      style={{ gridTemplateColumns }}
-                    >
-                      <span role="cell" className="text-right text-sm text-zinc-400 tabular-nums">
-                        {i + 1}
-                      </span>
-                      <div role="cell" className="flex gap-1">
-                        <Votes item={item} voting={voting} />
-                      </div>
-                      <div role="cell">
-                        <CommentButton item={item} onOpen={onOpen} />
-                      </div>
-                      {canDrag && handle}
-                      <div role="cell" className="min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => onOpen(item)}
-                          className="text-left font-medium break-words hover:underline"
-                        >
-                          {item.title}
-                        </button>
-                        <p className="text-xs text-zinc-500">{addedBy(item, names)}</p>
-                      </div>
-                      {columns.map((c) => (
-                        <div role="cell" key={c.id} className="min-w-0 text-sm">
-                          {onEditField ? (
-                            <EditableField
-                              column={c}
-                              value={item.fields[c.id]}
-                              onSave={(v) => onEditField(item, c, v)}
-                            />
-                          ) : (
-                            <FieldValue column={c} value={item.fields[c.id]} clamp />
-                          )}
-                        </div>
-                      ))}
-                      {onDelete && (
-                        <div role="cell">
-                          <DeleteButton item={item} onDelete={onDelete} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </SortableRow>
-              ))}
-              {footer?.({ gridTemplateColumns, lead })}
-            </div>
-          </div>
-          {aside && <div className="mb-2 shrink-0">{aside}</div>}
-        </div>,
-      )}
-
-      {sortable(
-        /* Mobile: cards */
-        <ol className="space-y-2 md:hidden">
-          {items.map((item, i) => (
-            <SortableRow key={item.id} id={item.id} disabled={!canDrag} as="li">
-              {(handle) => (
-                <div
-                  className={`rounded-xl border p-3 ${
-                    highlight.has(item.id)
-                      ? "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/40"
-                      : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    {canDrag && handle}
-                    <span className="w-5 shrink-0 pt-0.5 text-right text-sm text-zinc-400 tabular-nums">{i + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => onOpen(item)}
-                        className="text-left font-medium break-words hover:underline"
+      {/* Desktop: options side by side */}
+      <div className="hidden md:block">
+        <div
+          role="table"
+          aria-label="Options"
+          className="grid rounded-xl border border-zinc-200 dark:border-zinc-800"
+          style={{ gridTemplateColumns }}
+        >
+          <div role="row" className="contents">
+            <div role="columnheader" className="border-b border-zinc-200 p-3 dark:border-zinc-800" />
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={items.map((i) => i.id)} strategy={horizontalListSortingStrategy}>
+                {items.map((item, i) => (
+                  <Sortable key={item.id} id={item.id} disabled={!canDrag}>
+                    {(handle) => (
+                      <div
+                        role="columnheader"
+                        className={`h-full space-y-2 border-b border-l border-zinc-200 p-3 dark:border-zinc-800 ${cellBg(item)}`}
                       >
-                        {item.title}
-                      </button>
-                      <p className="text-xs text-zinc-500">{addedBy(item, names)}</p>
-                    </div>
-                    {onDelete && <DeleteButton item={item} onDelete={onDelete} />}
-                  </div>
-                  {columns.some((c) => item.fields[c.id] !== undefined) && (
-                    <dl className="mt-2 space-y-1 pl-7 text-sm">
-                      {columns
-                        .filter((c) => item.fields[c.id] !== undefined)
-                        .map((c) => (
-                          <div key={c.id} className="flex gap-2">
-                            <dt className="shrink-0 text-zinc-500">{c.name}:</dt>
-                            <dd className="min-w-0">
-                              {/* Tapping a value opens the item's editor. */}
-                              <button type="button" onClick={() => onOpen(item)} className="text-left">
-                                <FieldValue column={c} value={item.fields[c.id]} clamp />
-                              </button>
-                            </dd>
-                          </div>
-                        ))}
-                    </dl>
+                        <OptionHeading {...props} item={item} rank={i + 1} handle={canDrag ? handle : null} />
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Votes item={item} voting={voting} />
+                          <CommentButton item={item} onOpen={props.onOpen} />
+                        </div>
+                      </div>
+                    )}
+                  </Sortable>
+                ))}
+              </SortableContext>
+            </DndContext>
+          </div>
+          {columns.map((c, ci) => (
+            <div role="row" key={c.id} className="contents">
+              <div
+                role="rowheader"
+                className={`p-3 ${ci < columns.length - 1 ? "border-b border-zinc-100 dark:border-zinc-900" : ""}`}
+              >
+                <RowLabel {...manage} column={c} editable={editable} />
+              </div>
+              {items.map((item) => (
+                <div
+                  role="cell"
+                  key={item.id}
+                  className={`min-w-0 border-l border-zinc-200 p-3 text-sm dark:border-zinc-800 ${
+                    ci < columns.length - 1 ? "border-b border-b-zinc-100 dark:border-b-zinc-900" : ""
+                  } ${cellBg(item)}`}
+                >
+                  {editable ? (
+                    <EditableField column={c} value={item.fields[c.id]} onSave={(v) => props.onEditField(item, c, v)} />
+                  ) : (
+                    <FieldValue column={c} value={item.fields[c.id]} />
                   )}
-                  <div className="mt-3 flex items-center gap-2 pl-7">
-                    <Votes item={item} voting={voting} />
-                    <CommentButton item={item} onOpen={onOpen} />
-                  </div>
                 </div>
-              )}
-            </SortableRow>
+              ))}
+            </div>
           ))}
-        </ol>,
+        </div>
+        {editable && (
+          <div className="mt-2">
+            <AddColumnButton {...manage} />
+          </div>
+        )}
+      </div>
+
+      {/* Phones: one card per option */}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+          <ol className="space-y-2 md:hidden">
+            {items.map((item, i) => (
+              <Sortable key={item.id} id={item.id} disabled={!canDrag} as="li">
+                {(handle) => (
+                  <div
+                    className={`space-y-2 rounded-xl border p-3 ${
+                      highlight.has(item.id)
+                        ? "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/40"
+                        : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
+                    }`}
+                  >
+                    <OptionHeading {...props} item={item} rank={i + 1} handle={canDrag ? handle : null} />
+                    <div className="flex items-center gap-1">
+                      <Votes item={item} voting={voting} />
+                      <CommentButton item={item} onOpen={props.onOpen} />
+                    </div>
+                    {columns.some((c) => item.fields[c.id] !== undefined) && (
+                      <dl className="space-y-1 text-sm">
+                        {columns
+                          .filter((c) => item.fields[c.id] !== undefined)
+                          .map((c) => (
+                            <div key={c.id} className="flex gap-2">
+                              <dt className="shrink-0 text-zinc-500">{c.name}:</dt>
+                              <dd className="min-w-0">
+                                {/* Tapping a value opens the option's details. */}
+                                <button type="button" onClick={() => props.onOpen(item)} className="text-left">
+                                  <FieldValue column={c} value={item.fields[c.id]} clamp />
+                                </button>
+                              </dd>
+                            </div>
+                          ))}
+                      </dl>
+                    )}
+                  </div>
+                )}
+              </Sortable>
+            ))}
+          </ol>
+        </SortableContext>
+      </DndContext>
+      {editable && (
+        <div className="md:hidden">
+          <AddColumnButton {...manage} />
+        </div>
       )}
     </>
   );
 }
 
-export function SortableRow({
+// An option's rank and name, with its ⋯ menu (Rename, Details, Delete) for
+// admins. Clicking the name opens the details panel.
+function OptionHeading({
+  item,
+  rank,
+  handle,
+  names,
+  editable,
+  onOpen,
+  onRename,
+  onDelete,
+}: Props & { item: Item; rank: number; handle: React.ReactNode }) {
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(item.title);
+
+  function commit() {
+    setRenaming(false);
+    const t = draft.trim();
+    if (t && t !== item.title) onRename(item, t);
+    else setDraft(item.title);
+  }
+
+  return (
+    <div className="flex items-start gap-1.5">
+      {handle}
+      <span className="pt-0.5 text-xs text-zinc-400 tabular-nums">#{rank}</span>
+      <div className="min-w-0 flex-1">
+        {renaming ? (
+          <AutoTextarea
+            ref={(el) => el?.focus()}
+            aria-label={`Rename ${item.title}`}
+            className={editClass}
+            value={draft}
+            maxLength={200}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit();
+              }
+              if (e.key === "Escape") {
+                setDraft(item.title);
+                setRenaming(false);
+              }
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => onOpen(item)}
+            className="text-left font-semibold break-words hover:underline"
+          >
+            {item.title}
+          </button>
+        )}
+        <p className="text-xs text-zinc-500">{addedBy(item, names)}</p>
+      </div>
+      {editable && !renaming && (
+        <Menu
+          label={`${item.title} options`}
+          items={[
+            {
+              label: "Rename",
+              onSelect: () => {
+                setDraft(item.title);
+                setRenaming(true);
+              },
+            },
+            { label: "Details & comments", onSelect: () => onOpen(item) },
+            { label: "Delete", onSelect: () => onDelete(item), danger: true },
+          ]}
+        />
+      )}
+    </div>
+  );
+}
+
+function Sortable({
   id,
   disabled,
   as: Tag = "div",
@@ -291,171 +308,6 @@ export function SortableRow({
     >
       {children(handle)}
     </Tag>
-  );
-}
-
-function HeaderButton({
-  label,
-  sortKey,
-  active,
-  onSort,
-}: {
-  label: string;
-  sortKey: SortKey;
-  active: Sort;
-  onSort: (key: SortKey) => void;
-}) {
-  const isActive = active.key === sortKey;
-  const arrow = isActive ? (active.dir === "asc" ? " ↑" : " ↓") : "";
-  return (
-    <span role="columnheader" aria-sort={isActive ? (active.dir === "asc" ? "ascending" : "descending") : "none"}>
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={`truncate text-left uppercase hover:text-zinc-900 dark:hover:text-zinc-100 ${isActive ? "text-zinc-900 dark:text-zinc-100" : ""}`}
-      >
-        {label}
-        {arrow}
-      </button>
-    </span>
-  );
-}
-
-const editClass =
-  "w-full min-w-0 rounded-md border border-zinc-400 bg-white px-2 py-1 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-300";
-
-// A table cell value you can click to edit in place. Text saves on Enter or
-// when you click away (Escape cancels); long text saves on Ctrl/Cmd+Enter or
-// click-away; yes/no saves as soon as you pick.
-function EditableField({
-  column,
-  value,
-  onSave,
-}: {
-  column: Column;
-  value: string | boolean | undefined;
-  onSave: (value: string | boolean | null) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  // Enter commits and unmounts the input, which can also fire blur; only the
-  // first close counts.
-  const closed = useRef(false);
-  const current = value === undefined ? "" : column.type === "boolean" ? (value ? "yes" : "no") : String(value);
-
-  function start() {
-    closed.current = false;
-    setDraft(current);
-    setEditing(true);
-  }
-
-  function cancel() {
-    closed.current = true;
-    setEditing(false);
-  }
-
-  function commit(next: string) {
-    if (closed.current) return;
-    closed.current = true;
-    setEditing(false);
-    if (next.trim() === current) return;
-    const v = next.trim();
-    onSave(v === "" ? null : column.type === "boolean" ? v === "yes" : v);
-  }
-
-  if (!editing) {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={`Edit ${column.name}`}
-        onClick={start}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            start();
-          }
-        }}
-        title={`Edit ${column.name}`}
-        className="group -mx-1 flex min-h-7 cursor-text items-start gap-1 rounded border border-transparent px-1 py-0.5 hover:border-zinc-300 hover:bg-zinc-50 focus-visible:border-zinc-400 focus-visible:outline-none dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
-      >
-        <span className="min-w-0 flex-1">
-          {current === "" ? (
-            <span className="text-zinc-400 italic opacity-60 group-hover:opacity-100">Add</span>
-          ) : (
-            <FieldValue column={column} value={value} clamp />
-          )}
-        </span>
-        <span
-          aria-hidden
-          className="shrink-0 text-xs text-zinc-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
-        >
-          ✎
-        </span>
-      </div>
-    );
-  }
-
-  if (column.type === "boolean") {
-    return (
-      <select
-        ref={(el) => el?.focus()}
-        aria-label={column.name}
-        className={editClass}
-        value={draft}
-        onChange={(e) => commit(e.target.value)}
-        onBlur={cancel}
-        onKeyDown={(e) => e.key === "Escape" && cancel()}
-      >
-        <option value="">—</option>
-        <option value="yes">Yes</option>
-        <option value="no">No</option>
-      </select>
-    );
-  }
-
-  if (column.type === "textarea") {
-    return (
-      <textarea
-        ref={(el) => el?.focus()}
-        aria-label={column.name}
-        className={`${editClass} min-h-16`}
-        value={draft}
-        maxLength={2000}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => commit(draft)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") cancel();
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) commit(draft);
-        }}
-      />
-    );
-  }
-
-  return (
-    <input
-      ref={(el) => el?.focus()}
-      aria-label={column.name}
-      className={editClass}
-      value={draft}
-      maxLength={200}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => commit(draft)}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") cancel();
-        if (e.key === "Enter" && !e.nativeEvent.isComposing) commit(draft);
-      }}
-    />
-  );
-}
-
-export function FieldValue({ column, value, clamp }: { column: Column; value: unknown; clamp?: boolean }) {
-  if (value === undefined || value === null || value === "") return <span className="text-zinc-400">—</span>;
-  if (column.type === "boolean") return <span>{value === true ? "Yes" : "No"}</span>;
-  return (
-    <span className={`whitespace-pre-wrap break-words ${clamp ? "line-clamp-2" : ""}`}>
-      <Linkify text={String(value)} />
-    </span>
   );
 }
 
@@ -567,20 +419,6 @@ function VoteButton(props: {
       }`}
     >
       {props.content}
-    </button>
-  );
-}
-
-function DeleteButton({ item, onDelete }: { item: Item; onDelete: (item: Item) => void }) {
-  return (
-    <button
-      type="button"
-      aria-label={`Delete ${item.title}`}
-      title="Delete option"
-      onClick={() => onDelete(item)}
-      className="rounded px-1.5 py-0.5 text-lg leading-none text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
-    >
-      ×
     </button>
   );
 }

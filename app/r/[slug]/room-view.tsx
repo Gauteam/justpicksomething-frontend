@@ -14,15 +14,15 @@ import {
   type Item,
   type RoomData,
 } from "@/lib/api";
-import { effectiveSort, isSortable, loadSort, nextSort, saveSort, sortItems, type Sort } from "@/lib/sort";
+import { effectiveSort, isSortable, loadSort, saveSort, sortItems, type Sort } from "@/lib/sort";
 import { updateSession, useRoomSession, type RoomSession } from "@/lib/session";
 import { useRoom } from "@/lib/use-room";
 import { useConfirm } from "@/components/confirm-dialog";
 import { ShareCard } from "@/components/share-card";
 import { errorClass, secondaryButtonClass } from "@/components/styles";
-import { AddButton, AddRowsCards, AddRowsTable, AddStatus, useNewRows } from "./add-rows";
-import { ColumnsPanel } from "./columns-panel";
+import { AddOptionForm } from "./add-rows";
 import { ItemList, type Voting } from "./item-list";
+import { AddColumnButton } from "./row-labels";
 import { ItemPanel } from "./item-panel";
 import { JoinForm } from "./join-form";
 import { MembersPanel } from "./members-panel";
@@ -65,7 +65,6 @@ type RoomProps = {
 
 function Room({ slug, token, session, data, setData, error, refresh }: RoomProps) {
   const [showInvite, setShowInvite] = useState(false);
-  const [showColumns, setShowColumns] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
@@ -98,7 +97,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
   const canEdit = !locked;
   const full = room.maxItems !== null && data.items.length >= room.maxItems;
   const adding = canEdit && !full;
-  const newRows = useNewRows({ slug, token, columns: data.columns, onAdded: refresh });
+  const editable = isAdmin && canEdit;
 
   const votesUsed = data.items.reduce((n, i) => n + Math.max(i.myVote, 0), 0);
   const voting: Voting = {
@@ -171,6 +170,17 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
       await updateItem(slug, token, item.id, { fields: { [column.id]: value } });
     } catch (err) {
       setActionError(errorMessage(err, `Couldn't save ${column.name}.`));
+    }
+    await refresh();
+  }
+
+  async function renameOption(item: Item, title: string) {
+    setData((d) => d && { ...d, items: d.items.map((it) => (it.id === item.id ? { ...it, title } : it)) });
+    setActionError(null);
+    try {
+      await updateItem(slug, token, item.id, { title });
+    } catch (err) {
+      setActionError(errorMessage(err, "Couldn't rename that."));
     }
     await refresh();
   }
@@ -274,10 +284,27 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
 
       {(actionError || error) && <p className={errorClass}>{actionError ?? error}</p>}
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SortSelect sort={active} columns={data.columns} onChange={changeSort} />
-          <div className="flex items-center gap-3">
+      {adding && (
+        <div className="space-y-2">
+          <AddOptionForm
+            slug={slug}
+            token={token}
+            columns={data.columns}
+            existingTitles={data.items.map((i) => i.title)}
+            onAdded={refresh}
+          />
+          {/* With no table yet, details (rows) are added from here. */}
+          {editable && data.items.length === 0 && (
+            <AddColumnButton slug={slug} token={token} onChanged={refresh} onError={setActionError} />
+          )}
+        </div>
+      )}
+      {canEdit && full && <p className="text-sm text-zinc-500">This room is full ({room.maxItems} options).</p>}
+
+      {data.items.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SortSelect sort={active} columns={data.columns} onChange={changeSort} />
             {room.voteMode === "budget" && !locked && (
               <p className="text-sm text-zinc-600 dark:text-zinc-400" aria-live="polite">
                 {voting.votesLeft >= 0
@@ -285,42 +312,30 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
                   : `${-voting.votesLeft} over your ${room.votesPerMember} votes — take some back`}
               </p>
             )}
-            {isAdmin && canEdit && (
-              <button type="button" className={secondaryButtonClass} onClick={() => setShowColumns(true)}>
-                {data.columns.length > 0 ? `Columns (${data.columns.length})` : "Set up columns"}
-              </button>
-            )}
           </div>
-        </div>
-        {isAdmin && canEdit && active.key !== "manual" && data.items.length > 1 && (
-          <p className="text-xs text-zinc-500">Switch to “Manual order” to drag options into place.</p>
-        )}
-        <ItemList
-          items={items}
-          columns={data.columns}
-          names={names}
-          sort={active}
-          canDrag={isAdmin && canEdit && active.key === "manual"}
-          onSort={(key) => changeSort(nextSort(active, key))}
-          voting={voting}
-          highlight={highlight}
-          onOpen={(item) => setOpenItemId(item.id)}
-          onReorder={reorder}
-          onEditField={isAdmin && canEdit ? editField : undefined}
-          onDelete={isAdmin && canEdit ? deleteOption : undefined}
-          footer={adding ? (grid) => <AddRowsTable s={newRows} columns={data.columns} {...grid} /> : undefined}
-          aside={adding ? <AddButton s={newRows} className="h-9 w-10" /> : undefined}
-        />
-        {adding && <AddStatus s={newRows} className="hidden md:block" />}
-        {/* Phones have cards instead of the table, so the input goes under them. */}
-        <div className="md:hidden">
-          {data.items.length === 0 && (
-            <p className="mb-2 text-center text-sm text-zinc-500">Nothing here yet. Add the first option below.</p>
+          {editable && active.key !== "manual" && data.items.length > 1 && (
+            <p className="text-xs text-zinc-500">Switch to “Manual order” to drag options into place.</p>
           )}
-          {adding && <AddRowsCards s={newRows} columns={data.columns} />}
+          <ItemList
+            slug={slug}
+            token={token}
+            items={items}
+            columns={data.columns}
+            names={names}
+            canDrag={editable && active.key === "manual"}
+            voting={voting}
+            highlight={highlight}
+            editable={editable}
+            onOpen={(item) => setOpenItemId(item.id)}
+            onReorder={reorder}
+            onEditField={editField}
+            onRename={renameOption}
+            onDelete={deleteOption}
+            onColumnsChanged={refresh}
+            onError={setActionError}
+          />
         </div>
-        {canEdit && full && <p className="text-sm text-zinc-500">This room is full ({room.maxItems} options).</p>}
-      </div>
+      )}
 
       {openItem && (
         <ItemPanel
@@ -338,15 +353,6 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
           onDelete={() => deleteOption(openItem)}
           onChanged={refresh}
           onClose={() => setOpenItemId(null)}
-        />
-      )}
-      {showColumns && isAdmin && canEdit && (
-        <ColumnsPanel
-          slug={slug}
-          token={token}
-          columns={data.columns}
-          onChanged={refresh}
-          onClose={() => setShowColumns(false)}
         />
       )}
       {showMembers && (

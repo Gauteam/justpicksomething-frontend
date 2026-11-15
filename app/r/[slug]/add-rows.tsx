@@ -1,21 +1,24 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { addItems, errorMessage, type Column, type NewItem } from "@/lib/api";
+import { addItems, errorMessage, linkTitle, type Column, type NewItem } from "@/lib/api";
+import { AutoTextarea } from "@/components/auto-textarea";
+import { isUrl, nameFromLink } from "@/components/link-badge";
 import { errorClass, labelClass, primaryButtonClass } from "@/components/styles";
 
 const MAX_ROWS = 50;
 
-// One row being typed: the option's title plus a raw string per column
-// (booleans as "" / "yes" / "no").
+// One option being typed: its name plus a raw string per column (booleans as
+// "" / "yes" / "no").
 type Row = { title: string; fields: Record<string, string> };
 
 const blankRow = (): Row => ({ title: "", fields: {} });
 
-const cellClass =
+const inputClass =
   "w-full min-w-0 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-300";
 
-const HELP = "Press Enter to add. To add several at once, paste rows copied from a spreadsheet.";
+const HELP =
+  "Nothing is required: paste a link and the name fills in from the page. Enter adds. To add several at once, paste rows copied from a spreadsheet.";
 
 // Accepts what people type or paste for a yes/no column.
 function parseBoolean(s: string): string {
@@ -25,46 +28,88 @@ function parseBoolean(s: string): string {
   return "";
 }
 
-export type NewRows = ReturnType<typeof useNewRows>;
+// The column a pasted link belongs in: the first short-text column named like
+// a link (Link, Listing, Menu, Website…).
+function findLinkColumn(columns: Column[]): Column | undefined {
+  return columns.find((c) => c.type === "text" && /link|listing|url|menu|website|booking|site/i.test(c.name));
+}
 
-// State for the new-option row(s), shared by the table row, the + button
-// beside the table and the phone card. Starts as one row; pasting rows copied
-// from a spreadsheet (tab-separated, one per line) fills cells from where you
-// paste and adds rows as needed. Submitting adds every row with a title.
-export function useNewRows({
-  slug,
-  token,
-  columns,
-  onAdded,
-}: {
+type Props = {
   slug: string;
   token: string;
   columns: Column[];
+  // Titles already in the room, so fallback names don't collide.
+  existingTitles: string[];
   onAdded: () => Promise<void>;
-}) {
+};
+
+// The add-option form above the table. Starts as one option; pasting rows
+// copied from a spreadsheet (tab-separated, one per line) fills more.
+export function AddOptionForm({ slug, token, columns, existingTitles, onAdded }: Props) {
   const [rows, setRows] = useState<Row[]>(() => [blankRow()]);
   const [busy, setBusy] = useState(false);
+  const [fetching, setFetching] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The first title input on desktop and on phones; focus goes back to
-  // whichever is visible after adding.
-  const firstInputs = useRef<(HTMLInputElement | null)[]>([]);
+  const firstInput = useRef<HTMLTextAreaElement | null>(null);
+  // Page titles already asked for, by URL (shared by typing and submitting).
+  const titleCache = useRef(new Map<string, Promise<string | null>>());
 
-  const filled = rows.filter((r) => r.title.trim());
-  // Cell positions: 0 is the title, then one per column.
+  const linkColumn = findLinkColumn(columns);
+  const hasContent = (r: Row) => r.title.trim() !== "" || Object.values(r.fields).some((v) => v.trim() !== "");
+  const filled = rows.filter(hasContent);
+  // Cell positions: 0 is the name, then one per column.
   const keys = ["title", ...columns.map((c) => c.id)];
 
-  function setCell(rowIndex: number, key: string, value: string) {
-    setMessage(null);
-    setError(null);
-    setRows((rs) =>
-      rs.map((r, i) =>
-        i !== rowIndex ? r : key === "title" ? { ...r, title: value } : { ...r, fields: { ...r.fields, [key]: value } },
-      ),
-    );
+  function titleFor(url: string) {
+    let p = titleCache.current.get(url);
+    if (!p) {
+      p = linkTitle(slug, token, url);
+      titleCache.current.set(url, p);
+    }
+    return p;
   }
 
-  function onPaste(e: React.ClipboardEvent, rowIndex: number, colIndex: number) {
+  // A link went into row `ri`: fetch its page title and use it as the name if
+  // the name is still empty when it arrives.
+  function fillTitleFromLink(ri: number, url: string) {
+    setFetching((f) => new Set(f).add(ri));
+    titleFor(url).then((title) => {
+      setFetching((f) => {
+        const next = new Set(f);
+        next.delete(ri);
+        return next;
+      });
+      if (!title) return;
+      // Fill an empty name, or replace a link left in the name box.
+      setRows((rs) =>
+        rs.map((r, i) => (i === ri && (r.title.trim() === "" || r.title.trim() === url) ? { ...r, title } : r)),
+      );
+    });
+  }
+
+  function setCell(ri: number, key: string, value: string) {
+    setMessage(null);
+    setError(null);
+    // A link typed or pasted as the name moves to the link column, and the
+    // page title becomes the name.
+    if (key === "title" && linkColumn && isUrl(value)) {
+      const url = value.trim();
+      setRows((rs) => rs.map((r, i) => (i === ri ? { title: "", fields: { ...r.fields, [linkColumn.id]: url } } : r)));
+      fillTitleFromLink(ri, url);
+      return;
+    }
+    setRows((rs) =>
+      rs.map((r, i) =>
+        i !== ri ? r : key === "title" ? { ...r, title: value } : { ...r, fields: { ...r.fields, [key]: value } },
+      ),
+    );
+    const col = columns.find((c) => c.id === key);
+    if (col?.type === "text" && isUrl(value) && rows[ri]?.title.trim() === "") fillTitleFromLink(ri, value.trim());
+    if (key === "title" && !linkColumn && isUrl(value)) fillTitleFromLink(ri, value.trim());
+  }
+
+  function onPaste(e: React.ClipboardEvent, ri: number, colIndex: number) {
     const text = e.clipboardData.getData("text/plain");
     if (!/[\t\n]/.test(text)) return; // a plain single value: normal paste
     e.preventDefault();
@@ -73,8 +118,8 @@ export function useNewRows({
     setMessage(null);
     setRows((rs) => {
       const next = [...rs];
-      lines.slice(0, MAX_ROWS - rowIndex).forEach((line, li) => {
-        const r = rowIndex + li;
+      lines.slice(0, MAX_ROWS - ri).forEach((line, li) => {
+        const r = ri + li;
         const row = next[r] ? { ...next[r], fields: { ...next[r].fields } } : blankRow();
         line.split("\t").forEach((cell, ci) => {
           const key = keys[colIndex + ci];
@@ -95,21 +140,43 @@ export function useNewRows({
     setRows((rs) => (rs.length === 1 ? [blankRow()] : rs.filter((_, i) => i !== index)));
   }
 
+  // The name for a row: what was typed, else the page title of its link, else
+  // a name made from the link, else "Untitled option" (numbered so names stay
+  // unique, since the room skips duplicate names).
+  async function nameFor(row: Row, taken: Set<string>): Promise<string> {
+    const pick = (base: string) => {
+      let name = base;
+      for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} ${n}`;
+      taken.add(name.toLowerCase());
+      return name;
+    };
+    if (row.title.trim()) {
+      taken.add(row.title.trim().toLowerCase());
+      return row.title.trim();
+    }
+    const url = Object.entries(row.fields).find(
+      ([id, v]) => columns.find((c) => c.id === id)?.type === "text" && isUrl(v),
+    )?.[1];
+    if (url) return pick((await titleFor(url.trim())) ?? nameFromLink(url));
+    return pick("Untitled option");
+  }
+
   async function submit() {
     if (filled.length === 0 || busy) return;
-    const items: NewItem[] = filled.map((r) => {
-      const fields: Record<string, string | boolean> = {};
-      for (const c of columns) {
-        const v = (r.fields[c.id] ?? "").trim();
-        if (v) fields[c.id] = c.type === "boolean" ? v === "yes" : v;
-      }
-      return { title: r.title, fields };
-    });
-
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
+      const taken = new Set(existingTitles.map((t) => t.toLowerCase()));
+      const items: NewItem[] = [];
+      for (const r of filled) {
+        const fields: Record<string, string | boolean> = {};
+        for (const c of columns) {
+          const v = (r.fields[c.id] ?? "").trim();
+          if (v) fields[c.id] = c.type === "boolean" ? v === "yes" : v;
+        }
+        items.push({ title: await nameFor(r, taken), fields });
+      }
       const added = await addItems(slug, token, items);
       const skipped = items.length - added.length;
       if (skipped > 0) {
@@ -121,7 +188,7 @@ export function useNewRows({
       }
       setRows([blankRow()]);
       await onAdded();
-      firstInputs.current.find((el) => el && el.offsetParent !== null)?.focus();
+      firstInput.current?.focus();
     } catch (err) {
       setError(errorMessage(err, "Couldn't add that."));
     } finally {
@@ -129,191 +196,88 @@ export function useNewRows({
     }
   }
 
-  // Enter in any input adds (Escape-free, IME-safe).
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      submit();
-    }
+  // Enter adds (short fields). Long-text fields keep Enter for new lines.
+  function onKeyDown(e: React.KeyboardEvent, multiline = false) {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    if (multiline && !(e.metaKey || e.ctrlKey)) return;
+    e.preventDefault();
+    submit();
   }
 
-  // Ref setter for the first title input in each layout (0 desktop, 1 phone).
-  const firstInputRef = (slot: number) => (el: HTMLInputElement | null) => {
-    firstInputs.current[slot] = el;
-  };
-
-  return { rows, filled, busy, message, error, firstInputRef, setCell, onPaste, onKeyDown, removeRow, submit };
-}
-
-function CellInput({
-  s,
-  column,
-  rowIndex,
-  colIndex,
-  label,
-}: {
-  s: NewRows;
-  column: Column;
-  rowIndex: number;
-  colIndex: number;
-  label: string;
-}) {
-  const value = s.rows[rowIndex].fields[column.id] ?? "";
-  if (column.type === "boolean") {
-    return (
-      <select
-        aria-label={label}
-        className={cellClass}
-        value={value}
-        onChange={(e) => s.setCell(rowIndex, column.id, e.target.value)}
-      >
-        <option value="">—</option>
-        <option value="yes">Yes</option>
-        <option value="no">No</option>
-      </select>
-    );
-  }
+  const n = filled.length;
   return (
-    <input
-      aria-label={label}
-      className={cellClass}
-      value={value}
-      maxLength={column.type === "textarea" ? 2000 : 200}
-      onChange={(e) => s.setCell(rowIndex, column.id, e.target.value)}
-      onPaste={(e) => s.onPaste(e, rowIndex, colIndex)}
-      onKeyDown={s.onKeyDown}
-    />
-  );
-}
-
-function TitleInput({ s, rowIndex, slot }: { s: NewRows; rowIndex: number; slot: number }) {
-  return (
-    <input
-      ref={rowIndex === 0 ? s.firstInputRef(slot) : undefined}
-      aria-label={`New option${s.rows.length > 1 ? `, row ${rowIndex + 1}` : ""}`}
-      placeholder={rowIndex === 0 ? "Add an option…" : undefined}
-      className={cellClass}
-      value={s.rows[rowIndex].title}
-      maxLength={200}
-      onChange={(e) => s.setCell(rowIndex, "title", e.target.value)}
-      onPaste={(e) => s.onPaste(e, rowIndex, 0)}
-      onKeyDown={s.onKeyDown}
-    />
-  );
-}
-
-const rowLabel = (s: NewRows, ri: number, name: string) => `${name}${s.rows.length > 1 ? `, row ${ri + 1}` : ""}`;
-
-// Input row(s) at the bottom of the comparison table, lined up with its
-// columns. `lead` is how many table columns come before Option.
-export function AddRowsTable({
-  s,
-  columns,
-  gridTemplateColumns,
-  lead,
-}: {
-  s: NewRows;
-  columns: Column[];
-  gridTemplateColumns: string;
-  lead: number;
-}) {
-  const span = { gridColumn: `span ${lead} / span ${lead}` };
-  return (
-    <div role="rowgroup" aria-label="New option" className="bg-zinc-50 dark:bg-zinc-900/60">
-      {s.rows.map((_, ri) => (
-        <div
-          key={ri}
-          role="row"
-          className="grid items-center gap-3 border-t border-zinc-200 px-3 py-2 dark:border-zinc-800"
-          style={{ gridTemplateColumns }}
-        >
-          <div role="cell" style={span} className="text-right">
-            {ri > 0 && (
-              <button
-                type="button"
-                aria-label={`Remove row ${ri + 1}`}
-                onClick={() => s.removeRow(ri)}
-                className="rounded px-2 py-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
-              >
-                ×
-              </button>
+    <section aria-label="Add an option" className="space-y-2">
+      {rows.map((row, ri) => (
+        <div key={ri} className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+          <div className="min-w-0 flex-1 space-y-2">
+            <AutoTextarea
+              ref={ri === 0 ? firstInput : undefined}
+              aria-label={`Option name${rows.length > 1 ? `, row ${ri + 1}` : ""}`}
+              placeholder={fetching.has(ri) ? "Getting the page title…" : "Add an option: a name, or paste a link"}
+              className={`${inputClass} text-base`}
+              value={row.title}
+              maxLength={200}
+              onChange={(e) => setCell(ri, "title", e.target.value)}
+              onPaste={(e) => onPaste(e, ri, 0)}
+              onKeyDown={(e) => onKeyDown(e)}
+            />
+            {columns.length > 0 && (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
+                {columns.map((c, ci) => (
+                  <label key={c.id} className="block min-w-0">
+                    <span className={`${labelClass} text-xs`}>{c.name}</span>
+                    {c.type === "boolean" ? (
+                      <select
+                        className={inputClass}
+                        value={row.fields[c.id] ?? ""}
+                        onChange={(e) => setCell(ri, c.id, e.target.value)}
+                      >
+                        <option value="">—</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    ) : (
+                      <AutoTextarea
+                        className={inputClass}
+                        value={row.fields[c.id] ?? ""}
+                        maxLength={c.type === "textarea" ? 2000 : 200}
+                        onChange={(e) => setCell(ri, c.id, e.target.value)}
+                        onPaste={(e) => onPaste(e, ri, ci + 1)}
+                        onKeyDown={(e) => onKeyDown(e, c.type === "textarea")}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
             )}
           </div>
-          <div role="cell">
-            <TitleInput s={s} rowIndex={ri} slot={0} />
-          </div>
-          {columns.map((c, ci) => (
-            <div role="cell" key={c.id}>
-              <CellInput s={s} column={c} rowIndex={ri} colIndex={ci + 1} label={rowLabel(s, ri, c.name)} />
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// The + button that adds the typed row(s).
-export function AddButton({ s, className = "" }: { s: NewRows; className?: string }) {
-  const n = s.filled.length;
-  return (
-    <button
-      type="button"
-      onClick={s.submit}
-      disabled={s.busy || n === 0}
-      aria-label={n > 1 ? `Add ${n} options` : "Add option"}
-      title={n > 1 ? `Add ${n} options` : "Add option"}
-      className={`${primaryButtonClass} gap-1 px-3 text-lg leading-none ${className}`}
-    >
-      <span aria-hidden>+</span>
-      {n > 1 && <span className="text-sm tabular-nums">{n}</span>}
-    </button>
-  );
-}
-
-// Help text, or what happened on the last add.
-export function AddStatus({ s, className = "" }: { s: NewRows; className?: string }) {
-  return (
-    <p className={`text-xs text-zinc-500 ${className}`} aria-live="polite">
-      {s.error ? <span className={errorClass}>{s.error}</span> : (s.message ?? HELP)}
-    </p>
-  );
-}
-
-// Phone version: the same inputs as a card under the option cards, with the
-// + button underneath.
-export function AddRowsCards({ s, columns }: { s: NewRows; columns: Column[] }) {
-  return (
-    <div aria-label="New option" className="space-y-2">
-      {s.rows.map((_, ri) => (
-        <div key={ri} className="space-y-2 rounded-xl border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
-          <div className="flex gap-2">
-            <TitleInput s={s} rowIndex={ri} slot={1} />
-            {s.rows.length > 1 && (
-              <button
-                type="button"
-                aria-label={`Remove row ${ri + 1}`}
-                onClick={() => s.removeRow(ri)}
-                className="rounded px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
-              >
-                ×
-              </button>
-            )}
-          </div>
-          {columns.length > 0 && (
-            <div className="grid grid-cols-2 gap-2">
-              {columns.map((c, ci) => (
-                <label key={c.id} className="block min-w-0">
-                  <span className={`${labelClass} text-xs`}>{c.name}</span>
-                  <CellInput s={s} column={c} rowIndex={ri} colIndex={ci + 1} label={rowLabel(s, ri, c.name)} />
-                </label>
-              ))}
-            </div>
+          {ri === 0 ? (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy || n === 0}
+              aria-label={n > 1 ? `Add ${n} options` : "Add option"}
+              title={n > 1 ? `Add ${n} options` : "Add option"}
+              className={`${primaryButtonClass} h-10 min-w-10 shrink-0 gap-1 px-3 text-lg leading-none`}
+            >
+              <span aria-hidden>+</span>
+              {n > 1 && <span className="text-sm tabular-nums">{n}</span>}
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label={`Remove row ${ri + 1}`}
+              onClick={() => removeRow(ri)}
+              className="h-10 min-w-10 shrink-0 rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
+            >
+              ×
+            </button>
           )}
         </div>
       ))}
-      <AddButton s={s} className="w-full py-2" />
-      <AddStatus s={s} />
-    </div>
+      <p className="text-xs text-zinc-500" aria-live="polite">
+        {error ? <span className={errorClass}>{error}</span> : (message ?? HELP)}
+      </p>
+    </section>
   );
 }
