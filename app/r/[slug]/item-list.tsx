@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
 import type { Column, Item, VoteMode } from "@/lib/api";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { MemberName } from "@/components/member-name";
 import { Menu } from "@/components/menu";
 import { Cell, FieldValue, editClass } from "./fields";
 import { AddColumnButton, RowLabel } from "./row-labels";
@@ -33,6 +34,8 @@ type Props = {
   items: Item[];
   columns: Column[];
   names: Map<string, string>;
+  // Each member's color (see lib/colors).
+  colors: Map<string, string>;
   canDrag: boolean;
   voting: Voting;
   // Highlighted options (the top pick once the room is locked in).
@@ -214,6 +217,7 @@ function OptionHeading({
   rank,
   handle,
   names,
+  colors,
   editable,
   onOpen,
   onRename,
@@ -263,7 +267,7 @@ function OptionHeading({
             {item.title}
           </button>
         )}
-        <p className="text-xs text-zinc-500">{addedBy(item, names)}</p>
+        <AddedBy item={item} names={names} colors={colors} />
       </div>
       {editable && !renaming && (
         <Menu
@@ -451,6 +455,19 @@ function CommentButton({ item, onOpen }: { item: Item; onOpen: (item: Item) => v
   );
 }
 
-function addedBy(item: Item, names: Map<string, string>) {
-  return item.createdBy && names.has(item.createdBy) ? `added by ${names.get(item.createdBy)}` : "added";
+function AddedBy({ item, names, colors }: { item: Item; names: Map<string, string>; colors: Map<string, string> }) {
+  const name = item.createdBy && names.get(item.createdBy);
+  return (
+    <p className="text-xs text-zinc-500">
+      added
+      {name && item.createdBy ? (
+        <>
+          {" "}
+          by <MemberName name={name} color={colors.get(item.createdBy)} />
+        </>
+      ) : (
+        ""
+      )}
+    </p>
+  );
 }

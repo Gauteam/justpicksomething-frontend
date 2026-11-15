@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { errorMessage, removeMember, resetPasscode, setMemberAdmin, type Member, type Room } from "@/lib/api";
+import { memberColors } from "@/lib/colors";
 import { updateSession } from "@/lib/session";
+import { MemberName } from "@/components/member-name";
 import { Panel } from "@/components/panel";
 import { errorClass, secondaryButtonClass } from "@/components/styles";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -25,6 +27,7 @@ export function MembersPanel({ slug, token, room, members, me, onChanged, onClos
   const [busyId, setBusyId] = useState<string | null>(null);
   const [newPasscode, setNewPasscode] = useState<string | null>(null);
   const locked = room.lockedAt !== null;
+  const colors = memberColors(members);
 
   async function run(id: string, action: () => Promise<unknown>, fallback: string) {
     setBusyId(id);
@@ -93,7 +96,7 @@ export function MembersPanel({ slug, token, room, members, me, onChanged, onClos
           {members.map((m) => (
             <li key={m.id} className="flex flex-wrap items-center gap-2 py-2.5">
               <span className="min-w-0 flex-1 truncate">
-                {m.displayName}
+                <MemberName name={m.displayName} color={colors.get(m.id)} />
                 {m.id === me.id && <span className="text-zinc-500"> (you)</span>}
               </span>
               {m.isAdmin && (

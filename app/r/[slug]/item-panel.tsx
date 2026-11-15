@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   addComment,
   deleteComment,
+  setReaction,
   editComment,
   errorMessage,
   listComments,
@@ -13,11 +14,12 @@ import {
   type Item,
   type Member,
 } from "@/lib/api";
-import { Linkify } from "@/components/linkify";
 import { Panel } from "@/components/panel";
-import { errorClass, inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
+import { errorClass, inputClass, labelClass, primaryButtonClass } from "@/components/styles";
 import { FieldValue, Votes, type Voting } from "./item-list";
 import { useConfirm } from "@/components/confirm-dialog";
+import { memberColors } from "@/lib/colors";
+import { applyReaction, CommentRow } from "./comment-row";
 
 type Props = {
   slug: string;
@@ -268,6 +270,16 @@ export function Comments({
     await onChanged();
   }
 
+  async function onReact(c: Comment, value: 1 | -1 | 0) {
+    setComments((cs) => cs?.map((x) => (x.id === c.id ? applyReaction(x, value) : x)) ?? null);
+    try {
+      await setReaction(slug, token, c.id, value);
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't save that."));
+    }
+    await onChanged();
+  }
+
   async function onDelete(c: Comment) {
     const ok = await confirm({ title: "Delete this comment?", confirmLabel: "Delete", tone: "danger" });
     if (!ok) return;
@@ -281,6 +293,7 @@ export function Comments({
   }
 
   const columnName = new Map(columns.map((c) => [c.id, c.name]));
+  const colors = memberColors(members);
   const shown = comments && (cellColumnId ? comments.filter((c) => c.columnId === cellColumnId) : comments);
 
   return (
@@ -296,7 +309,10 @@ export function Comments({
             <CommentRow
               key={c.id}
               comment={c}
-              about={!cellColumnId && c.columnId ? columnName.get(c.columnId) : undefined}
+              authorColor={colors.get(c.authorId)}
+              rowName={!cellColumnId && c.columnId ? columnName.get(c.columnId) : undefined}
+              canReact={!readOnly}
+              onReact={(v) => onReact(c, v)}
               author={names.get(c.authorId) ?? "Someone"}
               canEdit={!readOnly && c.authorId === me.id}
               canDelete={!readOnly && (c.authorId === me.id || me.isAdmin)}
@@ -343,110 +359,6 @@ export function Comments({
         </form>
       )}
     </section>
-  );
-}
-
-const timeFormat = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-function CommentRow({
-  comment,
-  author,
-  about,
-  canEdit,
-  canDelete,
-  onEdit,
-  onDelete,
-}: {
-  comment: Comment;
-  author: string;
-  // The column a cell comment is about, when shown among all the option's comments.
-  about?: string;
-  canEdit: boolean;
-  canDelete: boolean;
-  onEdit: (body: string) => Promise<void>;
-  onDelete: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(comment.body);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (!draft.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await onEdit(draft);
-      setEditing(false);
-    } catch (err) {
-      setError(errorMessage(err, "Couldn't save."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <li className="text-sm">
-      <p className="text-xs text-zinc-500">
-        <span className="font-medium text-zinc-700 dark:text-zinc-300">{author}</span> ·{" "}
-        {timeFormat.format(new Date(comment.createdAt))}
-        {comment.editedAt && " (edited)"}
-        {about && <span className="ml-1 rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">on {about}</span>}
-      </p>
-      {editing ? (
-        <form onSubmit={save} className="mt-1 space-y-2">
-          <textarea
-            className={`${inputClass} min-h-20`}
-            value={draft}
-            maxLength={1000}
-            onChange={(e) => setDraft(e.target.value)}
-            aria-label="Edit comment"
-          />
-          {error && <p className={errorClass}>{error}</p>}
-          <div className="flex gap-2">
-            <button type="submit" className={primaryButtonClass} disabled={busy || !draft.trim()}>
-              Save
-            </button>
-            <button
-              type="button"
-              className={secondaryButtonClass}
-              onClick={() => {
-                setEditing(false);
-                setDraft(comment.body);
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
-        <>
-          <p className="mt-0.5 whitespace-pre-wrap break-words">
-            <Linkify text={comment.body} />
-          </p>
-          {(canEdit || canDelete) && (
-            <div className="mt-1 flex gap-3 text-xs text-zinc-500">
-              {canEdit && (
-                <button type="button" className="hover:underline" onClick={() => setEditing(true)}>
-                  Edit
-                </button>
-              )}
-              {canDelete && (
-                <button type="button" className="hover:underline" onClick={onDelete}>
-                  Delete
-                </button>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </li>
   );
 }
 

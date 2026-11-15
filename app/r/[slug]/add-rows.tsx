@@ -17,9 +17,6 @@ const blankRow = (): Row => ({ title: "", fields: {} });
 const inputClass =
   "w-full min-w-0 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-300";
 
-const HELP =
-  "Nothing is required: paste a link and the name fills in from the page. Enter adds. To add several at once, paste rows copied from a spreadsheet.";
-
 // Accepts what people type or paste for a yes/no column.
 function parseBoolean(s: string): string {
   const v = s.trim().toLowerCase();
@@ -287,7 +284,7 @@ export function AddOptionForm({ slug, token, columns, existingTitles, defaultOpe
           ))}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="max-w-prose text-xs text-zinc-500" aria-live="polite">
-              {error ? <span className={errorClass}>{error}</span> : (message ?? HELP)}
+              {error ? <span className={errorClass}>{error}</span> : message}
             </p>
             <div className="ml-auto flex items-center gap-3">
               <label className="flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-400">

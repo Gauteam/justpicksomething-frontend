@@ -62,6 +62,10 @@ export type Comment = {
   body: string;
   createdAt: string;
   editedAt: string | null;
+  // Emphasis: ★ (positive) and ⚑ (concern) counts, and the viewer's own (1, -1, 0).
+  stars: number;
+  concerns: number;
+  myReaction: number;
 };
 
 export class ApiError extends Error {
@@ -265,4 +269,19 @@ export async function removeMember(slug: string, token: string, memberId: string
 export async function resetPasscode(slug: string, token: string) {
   const res = await request(`${roomPath(slug)}/passcode`, { method: "POST", token });
   return (await res.json()) as { passcode: string; passcodeChangedAt: string };
+}
+
+// Every comment in the room, oldest first (for the comments stream).
+export async function listRoomComments(slug: string, token: string): Promise<Comment[]> {
+  const res = await request(`${roomPath(slug)}/comments`, { token });
+  return ((await res.json()) as { comments?: Comment[] }).comments ?? [];
+}
+
+// Marks a comment ★ (1) or ⚑ (-1); 0 clears the viewer's mark.
+export async function setReaction(slug: string, token: string, commentId: string, value: 1 | -1 | 0) {
+  await request(`${roomPath(slug)}/comments/${commentId}/reaction`, {
+    method: value === 0 ? "DELETE" : "PUT",
+    token,
+    ...(value === 0 ? {} : { body: JSON.stringify({ value }) }),
+  });
 }

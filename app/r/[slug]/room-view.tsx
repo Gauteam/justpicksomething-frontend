@@ -18,9 +18,12 @@ import { effectiveSort, isSortable, loadSort, saveSort, sortItems, type Sort } f
 import { updateSession, useRoomSession, type RoomSession } from "@/lib/session";
 import { useRoom } from "@/lib/use-room";
 import { useConfirm } from "@/components/confirm-dialog";
+import { MemberName } from "@/components/member-name";
+import { memberColors } from "@/lib/colors";
 import { ShareCard } from "@/components/share-card";
 import { errorClass, secondaryButtonClass } from "@/components/styles";
 import { AddOptionForm } from "./add-rows";
+import { CommentsStream } from "./comments-stream";
 import { ItemList, type Voting } from "./item-list";
 import { AddColumnButton } from "./row-labels";
 import { CellCommentsPanel, ItemPanel } from "./item-panel";
@@ -91,6 +94,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
     knownPasscodeAt !== undefined && Date.parse(knownPasscodeAt) !== Date.parse(room.passcodeChangedAt);
   const passcode = passcodeStale ? undefined : session.passcode;
   const names = new Map(data.members.map((m) => [m.id, m.displayName]));
+  const colors = memberColors(data.members);
   const active = effectiveSort(sort, data.columns);
   const items = sortItems(data.items, data.columns, active);
   const openItem = data.items.find((i) => i.id === openItemId);
@@ -254,7 +258,15 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
           className="text-left text-sm text-zinc-600 hover:underline dark:text-zinc-400"
         >
           {data.members.length} {data.members.length === 1 ? "person" : "people"}:{" "}
-          {data.members.map((m) => (m.id === data.me.id ? `${m.displayName} (you)` : m.displayName)).join(", ")}
+          {data.members.map((m, i) => (
+            <span key={m.id}>
+              {i > 0 && ", "}
+              <MemberName
+                name={m.id === data.me.id ? `${m.displayName} (you)` : m.displayName}
+                color={colors.get(m.id)}
+              />
+            </span>
+          ))}
         </button>
         {showInvite && (
           <div className="space-y-2">
@@ -327,6 +339,7 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
             items={items}
             columns={data.columns}
             names={names}
+            colors={colors}
             canDrag={editable && active.key === "manual"}
             voting={voting}
             highlight={highlight}
@@ -341,6 +354,22 @@ function Room({ slug, token, session, data, setData, error, refresh }: RoomProps
             onError={setActionError}
           />
         </div>
+      )}
+
+      {data.items.length > 0 && (
+        <CommentsStream
+          slug={slug}
+          token={token}
+          items={items}
+          columns={data.columns}
+          members={data.members}
+          me={data.me}
+          colors={colors}
+          roomUpdatedAt={room.updatedAt}
+          readOnly={locked}
+          onOpen={(item) => setOpenItemId(item.id)}
+          onChanged={refresh}
+        />
       )}
 
       {openItem && (
