@@ -20,8 +20,23 @@ import { applyReaction, CommentRow } from "./comment-row";
 const ALL = "";
 const WHOLE = "__whole__";
 
-const selectClass =
-  "rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
+// A filter badge: click to filter, click again to clear.
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition ${
+        active
+          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+          : "border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
 
 type Props = {
   slug: string;
@@ -75,11 +90,23 @@ export function CommentsStream({
   const rank = new Map(items.map((it, i) => [it.id, i + 1]));
   const byId = new Map(items.map((it) => [it.id, it]));
 
-  const shown = (comments ?? [])
-    .filter((c) => itemFilter === ALL || c.itemId === itemFilter)
-    .filter((c) => rowFilter === ALL || (rowFilter === WHOLE ? c.columnId === null : c.columnId === rowFilter))
-    .slice()
-    .reverse();
+  const all = comments ?? [];
+  const matchesItem = (c: Comment) => itemFilter === ALL || c.itemId === itemFilter;
+  const matchesRow = (c: Comment) =>
+    rowFilter === ALL || (rowFilter === WHOLE ? c.columnId === null : c.columnId === rowFilter);
+  const shown = all.filter((c) => matchesItem(c) && matchesRow(c)).reverse();
+
+  // Badges only for what has comments. Each group's counts follow the other
+  // group's choice, so you can see what's left to narrow down.
+  const count = (pred: (c: Comment) => boolean) => all.filter(pred).length;
+  const itemChips = items
+    .map((it) => ({ it, n: count((c) => c.itemId === it.id && matchesRow(c)) }))
+    .filter(({ it, n }) => n > 0 || itemFilter === it.id);
+  const wholeCount = count((c) => c.columnId === null && matchesItem(c));
+  const rowChips = columns
+    .map((col) => ({ col, n: count((c) => c.columnId === col.id && matchesItem(c)) }))
+    .filter(({ col, n }) => n > 0 || rowFilter === col.id);
+  const toggle = (current: string, value: string, set: (v: string) => void) => set(current === value ? ALL : value);
 
   async function onReact(c: Comment, value: 1 | -1 | 0) {
     setComments((cs) => cs?.map((x) => (x.id === c.id ? applyReaction(x, value) : x)) ?? null);
@@ -117,36 +144,42 @@ export function CommentsStream({
         <h2 className="text-lg font-semibold">
           Comments{comments && comments.length > 0 ? ` (${comments.length})` : ""}
         </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            aria-label="Filter by option"
-            className={selectClass}
-            value={itemFilter}
-            onChange={(e) => setItemFilter(e.target.value)}
-          >
-            <option value={ALL}>All options</option>
-            {items.map((it, i) => (
-              <option key={it.id} value={it.id}>
-                #{i + 1} {it.title.length > 40 ? `${it.title.slice(0, 39)}…` : it.title}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter by row"
-            className={selectClass}
-            value={rowFilter}
-            onChange={(e) => setRowFilter(e.target.value)}
-          >
-            <option value={ALL}>All rows</option>
-            <option value={WHOLE}>Whole option</option>
-            {columns.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
       </div>
+      {all.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by option">
+            {itemChips.map(({ it, n }) => (
+              <Chip key={it.id} active={itemFilter === it.id} onClick={() => toggle(itemFilter, it.id, setItemFilter)}>
+                <span className="truncate">
+                  #{rank.get(it.id)} {it.title.length > 32 ? `${it.title.slice(0, 31)}…` : it.title}
+                </span>
+                <span className="tabular-nums opacity-60">{n}</span>
+              </Chip>
+            ))}
+          </div>
+          {(wholeCount > 0 || rowChips.length > 0 || rowFilter !== ALL) && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by row">
+              {(wholeCount > 0 || rowFilter === WHOLE) && (
+                <Chip active={rowFilter === WHOLE} onClick={() => toggle(rowFilter, WHOLE, setRowFilter)}>
+                  Whole option <span className="tabular-nums opacity-60">{wholeCount}</span>
+                </Chip>
+              )}
+              {rowChips.map(({ col, n }) => (
+                <Chip
+                  key={col.id}
+                  active={rowFilter === col.id}
+                  onClick={() => toggle(rowFilter, col.id, setRowFilter)}
+                >
+                  <span aria-hidden className="text-[0.6rem] leading-none">
+                    ◦
+                  </span>
+                  {col.name} <span className="tabular-nums opacity-60">{n}</span>
+                </Chip>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className={errorClass}>{error}</p>}
       {comments === null ? (
