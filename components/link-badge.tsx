@@ -1,3 +1,5 @@
+import OpenInNew from "@mui/icons-material/OpenInNew";
+
 // A value that's just a link shows as a compact badge: the domain with an
 // arrow, opening the page in a new tab.
 
@@ -47,7 +49,7 @@ export function LinkBadge({ href }: { href: string }) {
       className="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-xs font-medium text-zinc-800 select-none [-webkit-touch-callout:none] hover:border-zinc-500 hover:bg-white dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500"
     >
       <span className="truncate">{linkHost(href)}</span>
-      <span aria-hidden>↗</span>
+      <OpenInNew aria-hidden sx={{ fontSize: "0.85em" }} />
     </a>
   );
 }

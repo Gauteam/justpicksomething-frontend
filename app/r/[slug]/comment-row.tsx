@@ -5,13 +5,35 @@ import { errorMessage, type Comment } from "@/lib/api";
 import { Linkify } from "@/components/linkify";
 import { MemberName } from "@/components/member-name";
 import { errorClass, inputClass, primaryButtonClass, secondaryButtonClass } from "@/components/styles";
+import Flag from "@mui/icons-material/Flag";
+import OutlinedFlag from "@mui/icons-material/OutlinedFlag";
+import PriorityHigh from "@mui/icons-material/PriorityHigh";
+import Star from "@mui/icons-material/Star";
+import StarBorder from "@mui/icons-material/StarBorder";
+import ThumbDown from "@mui/icons-material/ThumbDown";
+import ThumbUp from "@mui/icons-material/ThumbUp";
 
 // Signal comments get a colored border around the whole comment, with their
 // symbol on the bottom-right corner. Plain comments have neither.
-const KIND_STYLES: Record<string, { symbol: string; label: string; border: string; badge: string }> = {
-  emphasis: { symbol: "!!", label: "Emphasis", border: "border-red-600/50", badge: "bg-red-600/50" },
-  up: { symbol: "👍", label: "Thumbs up", border: "border-green-600/50", badge: "bg-green-600/50" },
-  down: { symbol: "👎", label: "Thumbs down", border: "border-orange-500/50", badge: "bg-orange-500/50" },
+const KIND_STYLES: Record<string, { symbol: React.ReactNode; label: string; border: string; badge: string }> = {
+  emphasis: {
+    symbol: <PriorityHigh fontSize="inherit" />,
+    label: "Emphasis",
+    border: "border-red-600/50",
+    badge: "bg-red-600/50",
+  },
+  up: {
+    symbol: <ThumbUp fontSize="inherit" />,
+    label: "Thumbs up",
+    border: "border-green-600/50",
+    badge: "bg-green-600/50",
+  },
+  down: {
+    symbol: <ThumbDown fontSize="inherit" />,
+    label: "Thumbs down",
+    border: "border-orange-500/50",
+    badge: "bg-orange-500/50",
+  },
 };
 
 const timeFormat = new Intl.DateTimeFormat(undefined, {
@@ -138,7 +160,7 @@ export function CommentRow({
           </p>
           <div className="mt-1 flex items-center gap-1 text-xs text-zinc-500">
             <Emphasis
-              symbol="★"
+              symbol={comment.myReaction === 1 ? <Star fontSize="inherit" /> : <StarBorder fontSize="inherit" />}
               label="Star"
               count={comment.stars}
               mine={comment.myReaction === 1}
@@ -147,7 +169,7 @@ export function CommentRow({
               onClick={() => onReact(comment.myReaction === 1 ? 0 : 1)}
             />
             <Emphasis
-              symbol="⚑"
+              symbol={comment.myReaction === -1 ? <Flag fontSize="inherit" /> : <OutlinedFlag fontSize="inherit" />}
               label="Flag a concern"
               count={comment.concerns}
               mine={comment.myReaction === -1}
@@ -173,7 +195,7 @@ export function CommentRow({
 }
 
 function Emphasis(props: {
-  symbol: string;
+  symbol: React.ReactNode;
   label: string;
   count: number;
   mine: boolean;

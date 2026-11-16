@@ -124,7 +124,7 @@ export function SettingsPanel({ slug, token, room, onChanged, onClose }: Props) 
             />
             <span>
               <span className="font-medium">Thumbs up / down</span>
-              <span className="block text-zinc-500">Everyone can 👍 or 👎 every option.</span>
+              <span className="block text-zinc-500">Everyone can vote each option up or down.</span>
             </span>
           </label>
           <label className="flex items-start gap-2 text-sm">

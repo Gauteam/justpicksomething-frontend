@@ -5,6 +5,7 @@ import type { Column } from "@/lib/api";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { isUrl, LinkBadge } from "@/components/link-badge";
 import { Linkify } from "@/components/linkify";
+import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
 
 export function FieldValue({ column, value, clamp }: { column: Column; value: unknown; clamp?: boolean }) {
   if (value === undefined || value === null || value === "") return <span className="text-zinc-400">—</span>;
@@ -182,7 +183,7 @@ export function Cell({
             title={`Comment on ${column.name}`}
             className={`${iconButton} ${commentCount === 0 ? hoverOnly : ""}`}
           >
-            <span aria-hidden>💬</span>
+            <ChatBubbleOutline fontSize="inherit" aria-hidden />
             {commentCount > 0 && commentCount}
             {commenterColors.length > 0 && (
               <span aria-hidden className="ml-0.5 inline-flex items-center gap-0.5">

@@ -5,6 +5,9 @@ import { addItems, errorMessage, linkTitle, type Column, type NewItem } from "@/
 import { AutoTextarea } from "@/components/auto-textarea";
 import { isUrl, nameFromLink } from "@/components/link-badge";
 import { errorClass, labelClass, primaryButtonClass } from "@/components/styles";
+import ChevronRight from "@mui/icons-material/ChevronRight";
+import Close from "@mui/icons-material/Close";
+import Add from "@mui/icons-material/Add";
 
 const MAX_ROWS = 50;
 
@@ -219,7 +222,7 @@ export function AddOptionForm({ slug, token, columns, existingTitles, defaultOpe
           className="flex w-full items-center gap-2 px-4 py-3 text-left font-medium"
         >
           <span aria-hidden className={`inline-block text-zinc-400 transition-transform ${open ? "rotate-90" : ""}`}>
-            ▸
+            <ChevronRight fontSize="inherit" />
           </span>
           Add an option
         </button>
@@ -277,7 +280,7 @@ export function AddOptionForm({ slug, token, columns, existingTitles, defaultOpe
                   onClick={() => removeRow(ri)}
                   className="h-10 min-w-10 shrink-0 rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
                 >
-                  ×
+                  <Close fontSize="small" />
                 </button>
               )}
             </div>
@@ -299,7 +302,7 @@ export function AddOptionForm({ slug, token, columns, existingTitles, defaultOpe
                 title={n > 1 ? `Add ${n} options` : "Add option"}
                 className={`${primaryButtonClass} h-10 min-w-10 gap-1 px-3 text-lg leading-none`}
               >
-                <span aria-hidden>+</span>
+                <Add fontSize="small" aria-hidden />
                 {n > 1 && <span className="text-sm tabular-nums">{n}</span>}
               </button>
             </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import MoreHoriz from "@mui/icons-material/MoreHoriz";
 
 export type MenuItem = { label: string; onSelect: () => void; danger?: boolean; disabled?: boolean };
 
@@ -34,7 +35,7 @@ export function Menu({ label, items, className = "" }: { label: string; items: M
         onClick={() => setOpen((v) => !v)}
         className="rounded px-1.5 py-0.5 leading-none text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
       >
-        ⋯
+        <MoreHoriz fontSize="small" />
       </button>
       {open && (
         <div

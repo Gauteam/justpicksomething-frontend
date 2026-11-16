@@ -26,6 +26,12 @@ import { MemberName } from "@/components/member-name";
 import { Menu } from "@/components/menu";
 import { Cell, FieldValue, editClass } from "./fields";
 import { AddColumnButton, RowLabel } from "./row-labels";
+import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
+import DragIndicator from "@mui/icons-material/DragIndicator";
+import ThumbDown from "@mui/icons-material/ThumbDown";
+import ThumbDownOutlined from "@mui/icons-material/ThumbDownOutlined";
+import ThumbUp from "@mui/icons-material/ThumbUp";
+import ThumbUpOutlined from "@mui/icons-material/ThumbUpOutlined";
 
 export { FieldValue };
 
@@ -188,7 +194,7 @@ export function ItemList(props: Props) {
                                     aria-label={`${item.cellComments[c.id]} comments on ${c.name}`}
                                     className="ml-1 text-xs text-zinc-500 tabular-nums"
                                   >
-                                    💬 {item.cellComments[c.id]}
+                                    <ChatBubbleOutline fontSize="inherit" /> {item.cellComments[c.id]}
                                   </button>
                                 )}
                               </dd>
@@ -316,7 +322,7 @@ function Sortable({
       aria-label="Drag to reorder"
       className="cursor-grab touch-none rounded px-1 text-zinc-400 hover:bg-zinc-100 active:cursor-grabbing dark:hover:bg-zinc-800"
     >
-      ⠿
+      <DragIndicator fontSize="small" />
     </button>
   );
 
@@ -352,7 +358,11 @@ export function Votes({ item, voting }: { item: Item; voting: Voting }) {
           label="Thumbs up"
           content={
             <>
-              <span aria-hidden>👍</span>
+              {item.myVote === 1 ? (
+                <ThumbUp fontSize="inherit" aria-hidden />
+              ) : (
+                <ThumbUpOutlined fontSize="inherit" aria-hidden />
+              )}
               {item.up}
             </>
           }
@@ -364,7 +374,11 @@ export function Votes({ item, voting }: { item: Item; voting: Voting }) {
           label="Thumbs down"
           content={
             <>
-              <span aria-hidden>👎</span>
+              {item.myVote === -1 ? (
+                <ThumbDown fontSize="inherit" aria-hidden />
+              ) : (
+                <ThumbDownOutlined fontSize="inherit" aria-hidden />
+              )}
               {item.down}
             </>
           }
@@ -459,7 +473,7 @@ function CommentButton({
       aria-label={`${item.commentCount} ${item.commentCount === 1 ? "comment" : "comments"}`}
       className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-zinc-500 tabular-nums hover:bg-zinc-100 dark:hover:bg-zinc-800"
     >
-      <span aria-hidden>💬</span>
+      <ChatBubbleOutline fontSize="inherit" aria-hidden />
       {item.commentCount}
       <CommenterDots ids={item.commenters ?? []} colors={colors} />
     </button>

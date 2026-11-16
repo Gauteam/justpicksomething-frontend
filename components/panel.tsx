@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Close from "@mui/icons-material/Close";
 
 // A dialog that slides in from the right on desktop and up from the bottom
 // on mobile. Closes on Escape or a backdrop click.
@@ -44,7 +45,7 @@ export function Panel({ title, onClose, children }: { title: string; onClose: ()
             aria-label="Close"
             className="rounded-lg px-2 py-1 text-xl leading-none text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
           >
-            ×
+            <Close fontSize="small" />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4">{children}</div>

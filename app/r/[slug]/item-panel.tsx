@@ -21,6 +21,10 @@ import { FieldValue, Votes, type Voting } from "./item-list";
 import { useConfirm } from "@/components/confirm-dialog";
 import { memberColors } from "@/lib/colors";
 import { applyReaction, CommentRow } from "./comment-row";
+import EditOutlined from "@mui/icons-material/EditOutlined";
+import PriorityHigh from "@mui/icons-material/PriorityHigh";
+import ThumbDown from "@mui/icons-material/ThumbDown";
+import ThumbUp from "@mui/icons-material/ThumbUp";
 
 type Props = {
   slug: string;
@@ -83,7 +87,7 @@ export function ItemPanel(props: Props) {
                   onClick={() => setEditing(true)}
                   className="shrink-0 rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
                 >
-                  ✎ Edit
+                  <EditOutlined fontSize="inherit" aria-hidden /> Edit
                 </button>
               )}
             </div>
@@ -111,10 +115,25 @@ export function ItemPanel(props: Props) {
 }
 
 // The quick-signal post buttons (a plain Comment is the form's submit).
-const KIND_BUTTONS: { kind: CommentKind; symbol: string; label: string; className: string }[] = [
-  { kind: "emphasis", symbol: "!!", label: "Post with emphasis", className: "bg-red-600 hover:bg-red-700" },
-  { kind: "up", symbol: "👍", label: "Post a thumbs up", className: "bg-green-600 hover:bg-green-700" },
-  { kind: "down", symbol: "👎", label: "Post a thumbs down", className: "bg-orange-500 hover:bg-orange-600" },
+const KIND_BUTTONS: { kind: CommentKind; symbol: React.ReactNode; label: string; className: string }[] = [
+  {
+    kind: "emphasis",
+    symbol: <PriorityHigh fontSize="small" />,
+    label: "Post with emphasis",
+    className: "bg-red-600 hover:bg-red-700",
+  },
+  {
+    kind: "up",
+    symbol: <ThumbUp fontSize="small" />,
+    label: "Post a thumbs up",
+    className: "bg-green-600 hover:bg-green-700",
+  },
+  {
+    kind: "down",
+    symbol: <ThumbDown fontSize="small" />,
+    label: "Post a thumbs down",
+    className: "bg-orange-500 hover:bg-orange-600",
+  },
 ];
 
 // Boolean values are edited as "" (empty) / "yes" / "no".
