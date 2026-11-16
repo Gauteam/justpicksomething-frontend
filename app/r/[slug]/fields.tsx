@@ -28,12 +28,11 @@ const iconButton =
 // can't hover.
 const hoverOnly = "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
 
-// One table cell: the value, with buttons on its right, shown on hover: 💬
-// for this cell's comment thread (stays visible once it has comments) and, for
-// admins, ✎ to edit. Clicking ✎ turns the cell into a box: Enter or
-// click-away saves, Escape cancels; long text saves on Ctrl/Cmd+Enter or
-// click-away; yes/no saves as soon as you pick. Clicking the value itself
-// doesn't edit (a link just opens).
+// One table cell. Admins click the value to edit it (a long press on a link
+// badge, since a click opens the link). A 💬 on the right, shown on hover,
+// opens this cell's comment thread; it stays visible once it has comments.
+// Editing: Enter or click-away saves, Escape cancels; long text saves on
+// Ctrl/Cmd+Enter or click-away; yes/no saves as soon as you pick.
 export function Cell({
   column,
   value,
@@ -57,6 +56,22 @@ export function Cell({
   // first close counts.
   const closed = useRef(false);
   const current = value === undefined ? "" : column.type === "boolean" ? (value ? "yes" : "no") : String(value);
+
+  // A link badge opens the link on click, so on a link a long press edits.
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressed = useRef(false);
+  function pressStart() {
+    if (!onSave) return;
+    longPressed.current = false;
+    pressTimer.current = setTimeout(() => {
+      longPressed.current = true;
+      start();
+    }, 500);
+  }
+  function pressEnd() {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+  }
 
   function start() {
     closed.current = false;
@@ -121,7 +136,41 @@ export function Cell({
 
   return (
     <div className="group flex items-start gap-1">
-      <div className="min-w-0 flex-1 pt-0.5">
+      {/* Click the value to edit it (admins). */}
+      <div
+        {...(onSave
+          ? {
+              role: "button",
+              tabIndex: 0,
+              "aria-label": `Edit ${column.name}`,
+              title: `Edit ${column.name}`,
+              onClick: start,
+              onKeyDown: (e: React.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  start();
+                }
+              },
+              onPointerDown: pressStart,
+              onPointerUp: pressEnd,
+              onPointerLeave: pressEnd,
+              onPointerCancel: pressEnd,
+              // A long press already opened the editor; don't also follow the link.
+              onClickCapture: (e: React.MouseEvent) => {
+                if (longPressed.current) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  longPressed.current = false;
+                }
+              },
+            }
+          : {})}
+        className={`min-w-0 flex-1 rounded px-1 py-0.5 -mx-1 ${
+          onSave
+            ? "cursor-text hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-zinc-400 dark:hover:bg-zinc-900"
+            : ""
+        }`}
+      >
         <FieldValue column={column} value={value} />
       </div>
       <div className="flex shrink-0 items-center">
@@ -143,17 +192,6 @@ export function Cell({
                 {commenterColors.length > 4 && <span className="text-[0.6rem]">+{commenterColors.length - 4}</span>}
               </span>
             )}
-          </button>
-        )}
-        {onSave && (
-          <button
-            type="button"
-            onClick={start}
-            aria-label={`Edit ${column.name}`}
-            title={`Edit ${column.name}`}
-            className={`${iconButton} ${hoverOnly}`}
-          >
-            <span aria-hidden>✎</span>
           </button>
         )}
       </div>
